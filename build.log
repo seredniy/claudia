@@ -1,0 +1,6 @@
+
+ERROR: JAVA_HOME is set to an invalid directory: /mnt/c/Program Files/Eclipse Adoptium/jdk-25.0.1.8-hotspot
+
+Please set the JAVA_HOME variable in your environment to match the
+location of your Java installation.
+

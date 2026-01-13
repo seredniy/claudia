@@ -1,0 +1,81 @@
+<idea-plugin>
+    <id>com.example.anthropic.usage</id>
+    <name>Anthropic API Usage</name>
+    <vendor email="support@example.com" url="https://example.com">Claude Code Monitor</vendor>
+
+    <description><![CDATA[
+        Monitor your Anthropic API token usage directly in PhpStorm's status bar.
+
+        <h3>Features</h3>
+        <ul>
+            <li>Real-time token usage monitoring</li>
+            <li>Visual progress bar showing usage vs. limits</li>
+            <li>Automatic refresh every 5 minutes</li>
+            <li>Secure API key storage</li>
+        </ul>
+
+        <h3>Setup</h3>
+        <ol>
+            <li>Get your Anthropic Admin API key from https://console.anthropic.com/settings/admin-keys</li>
+            <li>Go to Settings → Tools → Anthropic API Settings</li>
+            <li>Enter your Admin API key</li>
+            <li>View your usage in the status bar!</li>
+        </ol>
+
+        <p><strong>Note:</strong> Requires an Admin API key (starts with sk-ant-admin...), not a regular API key.</p>
+    ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>1.0.0</h3>
+        <ul>
+            <li>Initial release</li>
+            <li>Status bar widget with token usage</li>
+            <li>Progress bar visualization</li>
+            <li>Settings UI for API key configuration</li>
+        </ul>
+    ]]></change-notes>
+
+    <!-- Require IntelliJ Platform 2024.2 or later -->
+    <idea-version since-build="242"/>
+
+    <!-- Plugin dependencies -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <resource-bundle>messages.AnthropicBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Application-level service for usage tracking -->
+        <applicationService
+                serviceImplementation="com.example.anthropic.services.AnthropicUsageService"/>
+
+        <!-- Application-level service for settings persistence -->
+        <applicationService
+                serviceImplementation="com.example.anthropic.settings.AnthropicSettingsState"/>
+
+        <!-- Status bar widget factory -->
+        <statusBarWidgetFactory
+                id="com.example.anthropic.statusbar.widget"
+                implementation="com.example.anthropic.statusbar.AnthropicUsageWidgetFactory"
+                order="after gitWidget"/>
+
+        <!-- Settings UI -->
+        <applicationConfigurable
+                parentId="tools"
+                instance="com.example.anthropic.settings.AnthropicSettingsConfigurable"
+                id="com.example.anthropic.settings"
+                displayName="Anthropic API Settings"/>
+
+        <!-- Notification group for usage alerts -->
+        <notificationGroup
+                id="Anthropic Usage Alerts"
+                displayType="BALLOON"
+                isLogByDefault="true"/>
+    </extensions>
+
+    <projectListeners>
+        <!-- Listen for project open events to start usage tracking -->
+        <listener
+                class="com.example.anthropic.services.AnthropicUsageService$ProjectListener"
+                topic="com.intellij.openapi.project.ProjectManagerListener"/>
+    </projectListeners>
+</idea-plugin>
