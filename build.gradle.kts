@@ -66,7 +66,6 @@ intellijPlatform {
     pluginConfiguration {
         name = properties["pluginName"] as String
         version = properties["pluginVersion"] as String
-        description = properties["pluginDescription"] as String
 
         ideaVersion {
             sinceBuild = "242"

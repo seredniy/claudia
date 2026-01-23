@@ -3,22 +3,19 @@
     <name>Claudia</name>
     <vendor email="seredniy@gmail.com" url="https://github.com/seredniy/claudia">Sercraft</vendor>
 
-    <description><![CDATA[
-        Claudia is a PhpStorm plugin that helps Claude Code users work more efficiently.
-
-        <h3>Features</h3>
-        <ul>
-            <li>Send files and folders to Claude Code terminal with a hotkey</li>
-            <li>Context menu integration in Project View</li>
-            <li>Real-time token usage monitoring in status bar</li>
-        </ul>
-
-        <h3>Usage</h3>
-        <ul>
-            <li>Select file/folder in Project tree → <b>Cmd+Shift+.</b> (or right-click → Send to Claude)</li>
-            <li>The path will be inserted into the active Claude Code terminal</li>
-        </ul>
-    ]]></description>
+    <description><![CDATA[Claudia is a PhpStorm plugin that helps Claude Code users work more efficiently.
+<br><br>
+<b>Features:</b>
+<ul>
+<li>Send files and folders to Claude Code terminal with a hotkey</li>
+<li>Context menu integration in Project View</li>
+<li>Real-time token usage monitoring in status bar</li>
+</ul>
+<b>Usage:</b>
+<ul>
+<li>Select file/folder in Project tree → Cmd+Shift+. (or right-click → Send to Claude)</li>
+<li>The path will be inserted into the active Claude Code terminal</li>
+</ul>]]></description>
 
     <change-notes><![CDATA[
         <h3>1.0.1</h3>
