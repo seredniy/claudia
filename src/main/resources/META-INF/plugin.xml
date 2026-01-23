@@ -1,10 +1,10 @@
 <idea-plugin>
-    <id>com.example.claudia</id>
+    <id>com.sercraft.claudia</id>
     <name>Claudia</name>
-    <vendor email="support@example.com" url="https://example.com">Claudia</vendor>
+    <vendor email="seredniy@gmail.com" url="https://github.com/seredniy/claudia">Sercraft</vendor>
 
     <description><![CDATA[
-        Claude Code helper for PhpStorm.
+        Claudia is a PhpStorm plugin that helps Claude Code users work more efficiently.
 
         <h3>Features</h3>
         <ul>
@@ -54,7 +54,7 @@
 
         <!-- Status bar widget factory -->
         <statusBarWidgetFactory
-                id="com.example.anthropic.statusbar.widget"
+                id="com.sercraft.claudia.statusbar.widget"
                 implementation="com.example.anthropic.statusbar.AnthropicUsageWidgetFactory"
                 order="after gitWidget"/>
 
@@ -62,8 +62,8 @@
         <applicationConfigurable
                 parentId="tools"
                 instance="com.example.anthropic.settings.AnthropicSettingsConfigurable"
-                id="com.example.anthropic.settings"
-                displayName="Anthropic API Settings"/>
+                id="com.sercraft.claudia.settings"
+                displayName="Claudia Settings"/>
 
         <!-- Notification group for usage alerts -->
         <notificationGroup
@@ -73,7 +73,7 @@
     </extensions>
 
     <actions>
-        <action id="com.example.anthropic.SendToClaudeAction"
+        <action id="com.sercraft.claudia.SendToClaudeAction"
                 class="com.example.anthropic.actions.SendToClaudeAction"
                 text="Send to Claude"
                 icon="AllIcons.Actions.Upload"
