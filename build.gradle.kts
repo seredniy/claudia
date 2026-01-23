@@ -21,6 +21,9 @@ dependencies {
     intellijPlatform {
         phpstorm(properties["platformVersion"] as String)
 
+        // Terminal plugin for sending files to Claude Code
+        bundledPlugin("org.jetbrains.plugins.terminal")
+
         // Required for plugin development
         instrumentationTools()
 
@@ -92,5 +95,9 @@ tasks {
 
     buildSearchableOptions {
         enabled = false
+    }
+
+    buildPlugin {
+        archiveBaseName.set("claudia")
     }
 }

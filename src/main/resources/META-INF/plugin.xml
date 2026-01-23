@@ -1,37 +1,36 @@
 <idea-plugin>
-    <id>com.example.anthropic.usage</id>
-    <name>Anthropic API Usage</name>
-    <vendor email="support@example.com" url="https://example.com">Claude Code Monitor</vendor>
+    <id>com.example.claudia</id>
+    <name>Claudia</name>
+    <vendor email="support@example.com" url="https://example.com">Claudia</vendor>
 
     <description><![CDATA[
-        Monitor your Anthropic API token usage directly in PhpStorm's status bar.
+        Claude Code helper for PhpStorm.
 
         <h3>Features</h3>
         <ul>
-            <li>Real-time token usage monitoring</li>
-            <li>Visual progress bar showing usage vs. limits</li>
-            <li>Automatic refresh every 5 minutes</li>
-            <li>Secure API key storage</li>
+            <li>Send files and folders to Claude Code terminal with a hotkey</li>
+            <li>Context menu integration in Project View</li>
+            <li>Real-time token usage monitoring in status bar</li>
         </ul>
 
-        <h3>Setup</h3>
-        <ol>
-            <li>Get your Anthropic Admin API key from https://console.anthropic.com/settings/admin-keys</li>
-            <li>Go to Settings → Tools → Anthropic API Settings</li>
-            <li>Enter your Admin API key</li>
-            <li>View your usage in the status bar!</li>
-        </ol>
-
-        <p><strong>Note:</strong> Requires an Admin API key (starts with sk-ant-admin...), not a regular API key.</p>
+        <h3>Usage</h3>
+        <ul>
+            <li>Select file/folder in Project tree → <b>Cmd+Shift+.</b> (or right-click → Send to Claude)</li>
+            <li>The path will be inserted into the active Claude Code terminal</li>
+        </ul>
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.1</h3>
+        <ul>
+            <li>Send files/folders to Claude Code terminal</li>
+            <li>Keyboard shortcut support (Cmd+Shift+.)</li>
+            <li>Context menu integration</li>
+        </ul>
         <h3>1.0.0</h3>
         <ul>
             <li>Initial release</li>
             <li>Status bar widget with token usage</li>
-            <li>Progress bar visualization</li>
-            <li>Settings UI for API key configuration</li>
         </ul>
     ]]></change-notes>
 
@@ -40,6 +39,7 @@
 
     <!-- Plugin dependencies -->
     <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
 
     <resource-bundle>messages.AnthropicBundle</resource-bundle>
 
@@ -71,6 +71,20 @@
                 displayType="BALLOON"
                 isLogByDefault="true"/>
     </extensions>
+
+    <actions>
+        <action id="com.example.anthropic.SendToClaudeAction"
+                class="com.example.anthropic.actions.SendToClaudeAction"
+                text="Send to Claude"
+                icon="AllIcons.Actions.Upload"
+                description="Send selected file or folder path to Claude Code terminal">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt PERIOD"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift PERIOD"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift PERIOD"/>
+        </action>
+    </actions>
 
     <projectListeners>
         <!-- Listen for project open events to start usage tracking -->
