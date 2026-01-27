@@ -6,17 +6,17 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VirtualFileManager
-import com.intellij.openapi.vfs.newvfs.BulkFileListener
-import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.messages.Topic
 import org.jetbrains.plugins.terminal.TerminalToolWindowFactory
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import org.jetbrains.plugins.terminal.ShellTerminalWidget
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardWatchEventKinds
 import javax.swing.SwingUtilities
+import kotlin.concurrent.thread
 import kotlin.io.path.exists
 import kotlin.io.path.deleteIfExists
 
@@ -24,6 +24,8 @@ import kotlin.io.path.deleteIfExists
 class SessionService(private val project: Project) : Disposable {
     private val log = logger<SessionService>()
     private var cachedSessions: List<SessionEntry> = emptyList()
+    @Volatile
+    private var watcherRunning = true
 
     companion object {
         val SESSIONS_CHANGED_TOPIC = Topic.create(
@@ -36,18 +38,57 @@ class SessionService(private val project: Project) : Disposable {
     }
 
     init {
-        project.messageBus.connect(this)
-            .subscribe(VirtualFileManager.VFS_CHANGES, object : BulkFileListener {
-                override fun after(events: List<VFileEvent>) {
-                    val relevant = events.any { event ->
-                        val path = event.path ?: return@any false
-                        path.contains(".claude/projects") && path.endsWith("sessions-index.json")
-                    }
-                    if (relevant) {
-                        refresh()
+        startFileWatcher()
+    }
+
+    /**
+     * Watch the sessions directory for changes using NIO WatchService.
+     * This detects external file modifications that IntelliJ VFS misses.
+     */
+    private fun startFileWatcher() {
+        val indexPath = getSessionsIndexPath()
+        val dir = indexPath.parent ?: return
+        if (!dir.exists()) {
+            try {
+                Files.createDirectories(dir)
+            } catch (e: Exception) {
+                log.warn("Cannot create sessions directory: ${e.message}")
+                return
+            }
+        }
+
+        thread(isDaemon = true, name = "claude-sessions-watcher") {
+            try {
+                val watchService = FileSystems.getDefault().newWatchService()
+                dir.register(
+                    watchService,
+                    StandardWatchEventKinds.ENTRY_CREATE,
+                    StandardWatchEventKinds.ENTRY_MODIFY,
+                    StandardWatchEventKinds.ENTRY_DELETE
+                )
+
+                while (watcherRunning) {
+                    val key = watchService.poll(2, java.util.concurrent.TimeUnit.SECONDS)
+                    if (key != null) {
+                        val relevant = key.pollEvents().any { event ->
+                            val context = event.context()
+                            context?.toString() == "sessions-index.json"
+                        }
+                        key.reset()
+                        if (relevant) {
+                            // Small delay to let the file finish writing.
+                            Thread.sleep(200)
+                            SwingUtilities.invokeLater { refresh() }
+                        }
                     }
                 }
-            })
+                watchService.close()
+            } catch (e: InterruptedException) {
+                // Service disposed.
+            } catch (e: Exception) {
+                log.warn("File watcher error: ${e.message}", e)
+            }
+        }
     }
 
     /**
@@ -209,6 +250,7 @@ class SessionService(private val project: Project) : Disposable {
     }
 
     override fun dispose() {
+        watcherRunning = false
         log.info("Disposing SessionService")
     }
 }

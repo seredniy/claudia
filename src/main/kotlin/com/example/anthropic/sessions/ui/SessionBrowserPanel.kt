@@ -15,6 +15,7 @@ import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
+import java.awt.Font
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.awt.Point
@@ -49,6 +50,8 @@ class SessionBrowserPanel(private val project: Project) {
     private val emptyLabel = JLabel("No sessions found", SwingConstants.CENTER)
     private var allSessions: List<SessionEntry> = emptyList()
     private var hoveredIndex: Int = -1
+    private val statusLabel = JLabel()
+    private var statusTimer: Timer? = null
 
     init {
         setupUI()
@@ -160,6 +163,13 @@ class SessionBrowserPanel(private val project: Project) {
 
         val scrollPane = JBScrollPane(sessionList)
         mainPanel.add(scrollPane, BorderLayout.CENTER)
+
+        // Status bar at bottom.
+        statusLabel.foreground = JBColor.GRAY
+        statusLabel.font = statusLabel.font.deriveFont(Font.PLAIN, 11f)
+        statusLabel.border = JBUI.Borders.empty(4, 8)
+        statusLabel.isVisible = false
+        mainPanel.add(statusLabel, BorderLayout.SOUTH)
     }
 
     private fun createToolbar(): ActionToolbar {
@@ -172,6 +182,7 @@ class SessionBrowserPanel(private val project: Project) {
             add(object : AnAction("Refresh", "Reload sessions", AllIcons.Actions.Refresh) {
                 override fun actionPerformed(e: AnActionEvent) {
                     service.refresh()
+                    showStatus("Refreshed — ${listModel.size()} sessions")
                 }
             })
         }
@@ -262,6 +273,19 @@ class SessionBrowserPanel(private val project: Project) {
         }
         mainPanel.revalidate()
         mainPanel.repaint()
+    }
+
+    private fun showStatus(text: String) {
+        statusTimer?.stop()
+        statusLabel.text = text
+        statusLabel.isVisible = true
+        statusTimer = Timer(2000) {
+            statusLabel.isVisible = false
+            mainPanel.revalidate()
+        }
+        statusTimer?.isRepeats = false
+        statusTimer?.start()
+        mainPanel.revalidate()
     }
 
     private fun buildSessionTooltip(session: SessionEntry): String {
