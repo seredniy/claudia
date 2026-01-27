@@ -19,14 +19,14 @@ Icon on the right IDE sidebar stripe. Click opens a panel with a list of recent 
 - [x] Terminal integration — waits for shell init before sending command
 - [x] Delete — removes both `.jsonl` file and entry from `sessions-index.json`
 - [x] Registration in `plugin.xml`
-
-### To Do — Quick Wins
-
-- [x] **Search / filter bar** — text field at the top to filter sessions by name, branch, or first prompt
-- [x] **Keyboard shortcuts** — Enter = resume, Delete = delete (with confirmation)
-- [ ] **Tooltip on hover** — show full `firstPrompt`, exact date, session ID
-- [x] **"New Session" toolbar button** — launch fresh `claude` in terminal
-- [ ] **Group by date** — sections: "Today", "Yesterday", "This Week", "Older"
+- [x] Search / filter bar — text field filtering by name, branch, or first prompt
+- [x] Keyboard shortcuts — Enter = resume, Delete = delete (with confirmation)
+- [x] "New Session" toolbar button — launch fresh `claude` in terminal
+- [x] Tooltip on hover — shows firstPrompt, exact dates, branch, messages, session ID
+- [x] Hover highlight on list items
+- [x] Group by date — sections: "Today", "Yesterday", "This Week", "Older" with centered separators
+- [x] NIO file watcher — replaces VFS listener for reliable external change detection
+- [x] Refresh status feedback — "Refreshed — X sessions" label at bottom
 
 ### To Do — Medium Effort
 
@@ -38,7 +38,7 @@ Icon on the right IDE sidebar stripe. Click opens a panel with a list of recent 
 
 - [ ] **Branch filter** — dropdown to filter sessions by git branch
 - [ ] **Pin / Favorite** — pin important sessions to the top of the list
-- [ ] **Periodic auto-refresh** — timer-based refresh in addition to VFS listener
+- [ ] **Periodic auto-refresh** — timer-based refresh in addition to NIO watcher
 
 ---
 
@@ -175,7 +175,7 @@ plugin.xml
     ├── resumeSession(id) -> opens terminal with retry wait
     ├── forkSession(id) -> opens terminal
     ├── deleteSession(id) -> removes file + index entry
-    └── VFS listener (auto-refresh on sessions-index.json change)
+    └── NIO WatchService (auto-refresh on sessions-index.json change)
           │
           v
     SessionIndexParser (reads sessions-index.json via Gson)
@@ -191,7 +191,8 @@ All under `src/main/kotlin/com/example/anthropic/sessions/`.
 | # | File | Status |
 |---|------|--------|
 | 1 | `model/SessionEntry.kt` | Done |
-| 2 | `parser/SessionIndexParser.kt` | Done |
+| 2 | `model/SessionListItem.kt` | Done |
+| 3 | `parser/SessionIndexParser.kt` | Done |
 | 3 | `SessionService.kt` | Done |
 | 4 | `ui/SessionCellRenderer.kt` | Done |
 | 5 | `ui/SessionBrowserPanel.kt` | Done |
@@ -232,8 +233,8 @@ fun waitAndSendCommand(widget: ShellTerminalWidget, command: String, attempt: In
 ### Delete with index update
 Removes both the `.jsonl` conversation file and the entry from `sessions-index.json`.
 
-### VFS auto-refresh
-Watches `sessions-index.json` for changes via `BulkFileListener`. When Claude Code creates/modifies sessions, the list updates automatically.
+### NIO file watcher
+Watches the sessions directory for changes via `java.nio.file.WatchService` (daemon thread). When Claude Code creates/modifies sessions, the list updates automatically. Replaced VFS `BulkFileListener` which didn't detect external file changes.
 
 ## Verification
 
