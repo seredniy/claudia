@@ -3,6 +3,7 @@ package com.example.anthropic.sessions.ui
 import com.example.anthropic.sessions.SessionService
 import com.example.anthropic.sessions.SessionsChangedListener
 import com.example.anthropic.sessions.model.SessionEntry
+import com.example.anthropic.sessions.model.SessionListItem
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
@@ -18,13 +19,14 @@ import java.awt.BorderLayout
 import java.awt.Font
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
-import java.awt.Point
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoField
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
@@ -35,15 +37,18 @@ import javax.swing.event.DocumentListener
 class SessionBrowserPanel(private val project: Project) {
     val mainPanel: JPanel = JPanel(BorderLayout())
     private val service = SessionService.getInstance(project)
-    private val listModel = DefaultListModel<SessionEntry>()
-    private val sessionList = object : JBList<SessionEntry>(listModel) {
+    private val listModel = DefaultListModel<SessionListItem>()
+    private val sessionList = object : JBList<SessionListItem>(listModel) {
         override fun getToolTipText(event: MouseEvent): String? {
             val index = locationToIndex(event.point)
             if (index < 0) return null
             val cellBounds = getCellBounds(index, index) ?: return null
             if (!cellBounds.contains(event.point)) return null
-            val session = model.getElementAt(index) ?: return null
-            return buildSessionTooltip(session)
+            val item = model.getElementAt(index)
+            if (item is SessionListItem.Session) {
+                return buildSessionTooltip(item.entry)
+            }
+            return null
         }
     }
     private val searchField = SearchTextField(false)
@@ -57,6 +62,14 @@ class SessionBrowserPanel(private val project: Project) {
         setupUI()
         loadSessions()
         subscribeToChanges()
+    }
+
+    /**
+     * Get the selected session entry, skipping headers.
+     */
+    private fun getSelectedSession(): SessionEntry? {
+        val item = sessionList.selectedValue ?: return null
+        return (item as? SessionListItem.Session)?.entry
     }
 
     private fun setupUI() {
@@ -91,7 +104,10 @@ class SessionBrowserPanel(private val project: Project) {
             override fun mouseMoved(e: MouseEvent) {
                 val index = sessionList.locationToIndex(e.point)
                 val bounds = sessionList.getCellBounds(index, index)
-                val newHovered = if (index >= 0 && bounds != null && bounds.contains(e.point)) index else -1
+                val newHovered = if (index >= 0 && bounds != null && bounds.contains(e.point)) {
+                    val item = listModel.getElementAt(index)
+                    if (item is SessionListItem.Session) index else -1
+                } else -1
                 if (newHovered != hoveredIndex) {
                     hoveredIndex = newHovered
                     sessionList.repaint()
@@ -111,7 +127,7 @@ class SessionBrowserPanel(private val project: Project) {
         sessionList.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount == 2) {
-                    val session = sessionList.selectedValue ?: return
+                    val session = getSelectedSession() ?: return
                     service.resumeSession(session.sessionId)
                 }
             }
@@ -122,11 +138,14 @@ class SessionBrowserPanel(private val project: Project) {
             override fun invokePopup(comp: java.awt.Component, x: Int, y: Int) {
                 val index = sessionList.locationToIndex(java.awt.Point(x, y))
                 if (index >= 0) {
-                    sessionList.selectedIndex = index
-                    val group = createContextMenuGroup()
-                    val popupMenu = ActionManager.getInstance()
-                        .createActionPopupMenu("SessionBrowserContext", group)
-                    popupMenu.component.show(comp, x, y)
+                    val item = listModel.getElementAt(index)
+                    if (item is SessionListItem.Session) {
+                        sessionList.selectedIndex = index
+                        val group = createContextMenuGroup()
+                        val popupMenu = ActionManager.getInstance()
+                            .createActionPopupMenu("SessionBrowserContext", group)
+                        popupMenu.component.show(comp, x, y)
+                    }
                 }
             }
         })
@@ -135,7 +154,7 @@ class SessionBrowserPanel(private val project: Project) {
         sessionList.inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "resumeSession")
         sessionList.actionMap.put("resumeSession", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent?) {
-                val session = sessionList.selectedValue ?: return
+                val session = getSelectedSession() ?: return
                 service.resumeSession(session.sessionId)
             }
         })
@@ -144,7 +163,7 @@ class SessionBrowserPanel(private val project: Project) {
         sessionList.inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0), "deleteSession")
         sessionList.actionMap.put("deleteSession", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent?) {
-                val session = sessionList.selectedValue ?: return
+                val session = getSelectedSession() ?: return
                 val confirm = Messages.showYesNoDialog(
                     project,
                     "Delete session '${session.displayTitle}'?\n\nSession ID: ${session.sessionId}",
@@ -182,7 +201,9 @@ class SessionBrowserPanel(private val project: Project) {
             add(object : AnAction("Refresh", "Reload sessions", AllIcons.Actions.Refresh) {
                 override fun actionPerformed(e: AnActionEvent) {
                     service.refresh()
-                    showStatus("Refreshed — ${listModel.size()} sessions")
+                    val sessionCount = listModel.elements().toList()
+                        .count { it is SessionListItem.Session }
+                    showStatus("Refreshed — $sessionCount sessions")
                 }
             })
         }
@@ -196,7 +217,7 @@ class SessionBrowserPanel(private val project: Project) {
         return DefaultActionGroup().apply {
             add(object : AnAction("Resume Session", "Resume this session in terminal", AllIcons.Actions.Execute) {
                 override fun actionPerformed(e: AnActionEvent) {
-                    val session = sessionList.selectedValue ?: return
+                    val session = getSelectedSession() ?: return
                     service.resumeSession(session.sessionId)
                 }
             })
@@ -205,7 +226,7 @@ class SessionBrowserPanel(private val project: Project) {
 
             add(object : AnAction("Fork Session", "Fork this session into a new one", AllIcons.Vcs.Branch) {
                 override fun actionPerformed(e: AnActionEvent) {
-                    val session = sessionList.selectedValue ?: return
+                    val session = getSelectedSession() ?: return
                     service.forkSession(session.sessionId)
                 }
             })
@@ -214,7 +235,7 @@ class SessionBrowserPanel(private val project: Project) {
 
             add(object : AnAction("Copy Session ID", "Copy session ID to clipboard", AllIcons.Actions.Copy) {
                 override fun actionPerformed(e: AnActionEvent) {
-                    val session = sessionList.selectedValue ?: return
+                    val session = getSelectedSession() ?: return
                     val clipboard = Toolkit.getDefaultToolkit().systemClipboard
                     clipboard.setContents(StringSelection(session.sessionId), null)
                 }
@@ -224,7 +245,7 @@ class SessionBrowserPanel(private val project: Project) {
 
             add(object : AnAction("Delete Session", "Delete this session", AllIcons.General.Remove) {
                 override fun actionPerformed(e: AnActionEvent) {
-                    val session = sessionList.selectedValue ?: return
+                    val session = getSelectedSession() ?: return
                     val confirm = Messages.showYesNoDialog(
                         project,
                         "Delete session '${session.displayTitle}'?\n\nSession ID: ${session.sessionId}",
@@ -264,7 +285,8 @@ class SessionBrowserPanel(private val project: Project) {
                 mainPanel.add(emptyLabel, BorderLayout.CENTER)
             }
         } else {
-            filtered.forEach { listModel.addElement(it) }
+            val grouped = groupByDate(filtered)
+            grouped.forEach { listModel.addElement(it) }
             val centerComponent = mainPanel.getComponent(1)
             if (centerComponent == emptyLabel) {
                 mainPanel.remove(emptyLabel)
@@ -273,6 +295,42 @@ class SessionBrowserPanel(private val project: Project) {
         }
         mainPanel.revalidate()
         mainPanel.repaint()
+    }
+
+    /**
+     * Group sessions by date into list items with headers.
+     */
+    private fun groupByDate(sessions: List<SessionEntry>): List<SessionListItem> {
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        val yesterday = today.minusDays(1)
+        val weekStart = today.with(ChronoField.DAY_OF_WEEK, 1)
+
+        val groups = linkedMapOf<String, MutableList<SessionEntry>>()
+
+        for (session in sessions) {
+            val date = try {
+                Instant.parse(session.modified).atZone(zone).toLocalDate()
+            } catch (e: Exception) {
+                LocalDate.MIN
+            }
+
+            val group = when {
+                date == today -> "Today"
+                date == yesterday -> "Yesterday"
+                date >= weekStart && date < today -> "This Week"
+                else -> "Older"
+            }
+
+            groups.getOrPut(group) { mutableListOf() }.add(session)
+        }
+
+        val result = mutableListOf<SessionListItem>()
+        for ((title, entries) in groups) {
+            result.add(SessionListItem.Header(title))
+            entries.forEach { result.add(SessionListItem.Session(it)) }
+        }
+        return result
     }
 
     private fun showStatus(text: String) {
