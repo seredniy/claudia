@@ -62,7 +62,10 @@ class SessionBrowserPanel(private val project: Project) {
                 val index = sessionList.locationToIndex(java.awt.Point(x, y))
                 if (index >= 0) {
                     sessionList.selectedIndex = index
-                    createContextMenu().show(comp, x, y)
+                    val group = createContextMenuGroup()
+                    val popupMenu = ActionManager.getInstance()
+                        .createActionPopupMenu("SessionBrowserContext", group)
+                    popupMenu.component.show(comp, x, y)
                 }
             }
         })
@@ -89,50 +92,51 @@ class SessionBrowserPanel(private val project: Project) {
         return toolbar
     }
 
-    private fun createContextMenu(): JPopupMenu {
-        val menu = JPopupMenu()
-        val session = sessionList.selectedValue ?: return menu
-
-        // Resume.
-        menu.add(JMenuItem("Resume Session", AllIcons.Actions.Execute).apply {
-            addActionListener { service.resumeSession(session.sessionId) }
-        })
-
-        menu.addSeparator()
-
-        // Fork.
-        menu.add(JMenuItem("Fork Session", AllIcons.Vcs.Branch).apply {
-            addActionListener { service.forkSession(session.sessionId) }
-        })
-
-        menu.addSeparator()
-
-        // Copy Session ID.
-        menu.add(JMenuItem("Copy Session ID", AllIcons.Actions.Copy).apply {
-            addActionListener {
-                val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-                clipboard.setContents(StringSelection(session.sessionId), null)
-            }
-        })
-
-        menu.addSeparator()
-
-        // Delete.
-        menu.add(JMenuItem("Delete Session", AllIcons.General.Remove).apply {
-            addActionListener {
-                val confirm = Messages.showYesNoDialog(
-                    project,
-                    "Delete session '${session.displayTitle}'?\n\nSession ID: ${session.sessionId}",
-                    "Delete Session",
-                    Messages.getWarningIcon()
-                )
-                if (confirm == Messages.YES) {
-                    service.deleteSession(session)
+    private fun createContextMenuGroup(): ActionGroup {
+        return DefaultActionGroup().apply {
+            add(object : AnAction("Resume Session", "Resume this session in terminal", AllIcons.Actions.Execute) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val session = sessionList.selectedValue ?: return
+                    service.resumeSession(session.sessionId)
                 }
-            }
-        })
+            })
 
-        return menu
+            addSeparator()
+
+            add(object : AnAction("Fork Session", "Fork this session into a new one", AllIcons.Vcs.Branch) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val session = sessionList.selectedValue ?: return
+                    service.forkSession(session.sessionId)
+                }
+            })
+
+            addSeparator()
+
+            add(object : AnAction("Copy Session ID", "Copy session ID to clipboard", AllIcons.Actions.Copy) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val session = sessionList.selectedValue ?: return
+                    val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                    clipboard.setContents(StringSelection(session.sessionId), null)
+                }
+            })
+
+            addSeparator()
+
+            add(object : AnAction("Delete Session", "Delete this session", AllIcons.General.Remove) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val session = sessionList.selectedValue ?: return
+                    val confirm = Messages.showYesNoDialog(
+                        project,
+                        "Delete session '${session.displayTitle}'?\n\nSession ID: ${session.sessionId}",
+                        "Delete Session",
+                        Messages.getWarningIcon()
+                    )
+                    if (confirm == Messages.YES) {
+                        service.deleteSession(session)
+                    }
+                }
+            })
+        }
     }
 
     private fun loadSessions() {
