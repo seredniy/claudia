@@ -3,21 +3,37 @@
     <name>Claudia</name>
     <vendor email="seredniy@gmail.com" url="https://github.com/seredniy/claudia">Sercraft</vendor>
 
-    <description><![CDATA[Claudia is a PhpStorm plugin that helps Claude Code users work more efficiently.
+    <description><![CDATA[Claudia is a JetBrains IDE plugin that helps Claude Code users work more efficiently.
 <br><br>
 <b>Features:</b>
 <ul>
+<li><b>Session Browser</b> — browse, resume, fork, and delete Claude Code sessions from the right sidebar</li>
 <li>Send files and folders to Claude Code terminal with a hotkey</li>
 <li>Context menu integration in Project View</li>
 <li>Real-time token usage monitoring in status bar</li>
 </ul>
 <b>Usage:</b>
 <ul>
+<li>Click the Claudia icon on the right sidebar to open Session Browser</li>
 <li>Select file/folder in Project tree → Cmd+Shift+. (or right-click → Send to Claude)</li>
 <li>The path will be inserted into the active Claude Code terminal</li>
 </ul>]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.3</h3>
+        <ul>
+            <li><b>Session Browser</b> — new tool window on right sidebar to browse, resume, fork, and delete Claude Code sessions</li>
+            <li>Search and filter sessions by text or git branch</li>
+            <li>Date grouping (Today, Yesterday, This Week, Older)</li>
+            <li>Keyboard shortcuts: Enter to resume, Delete to remove session</li>
+            <li>Hover highlight and rich tooltip with first prompt, dates, and session ID</li>
+            <li>NIO file watcher for automatic session list refresh</li>
+            <li>Branch filter popup in toolbar</li>
+        </ul>
+        <h3>1.0.2</h3>
+        <ul>
+            <li>Custom Claudia plugin icon</li>
+        </ul>
         <h3>1.0.1</h3>
         <ul>
             <li>Send files/folders to Claude Code terminal</li>
