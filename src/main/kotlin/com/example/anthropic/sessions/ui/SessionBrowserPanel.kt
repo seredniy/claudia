@@ -55,6 +55,9 @@ class SessionBrowserPanel(private val project: Project) {
     private val emptyLabel = JLabel("No sessions found", SwingConstants.CENTER)
     private var allSessions: List<SessionEntry> = emptyList()
     private var hoveredIndex: Int = -1
+    private var selectedBranch: String? = null
+    private val cardLayout = java.awt.CardLayout()
+    private val centerPanel = JPanel(cardLayout)
     private val statusLabel = JLabel()
     private var statusTimer: Timer? = null
 
@@ -83,6 +86,7 @@ class SessionBrowserPanel(private val project: Project) {
             override fun removeUpdate(e: DocumentEvent) = filterSessions()
             override fun changedUpdate(e: DocumentEvent) = filterSessions()
         })
+
         topPanel.add(searchField, BorderLayout.CENTER)
         topPanel.add(toolbar.component, BorderLayout.EAST)
         mainPanel.add(topPanel, BorderLayout.NORTH)
@@ -180,8 +184,10 @@ class SessionBrowserPanel(private val project: Project) {
         emptyLabel.foreground = JBColor.GRAY
         emptyLabel.border = JBUI.Borders.empty(20)
 
-        val scrollPane = JBScrollPane(sessionList)
-        mainPanel.add(scrollPane, BorderLayout.CENTER)
+        // Card layout for switching between list and empty state.
+        centerPanel.add(JBScrollPane(sessionList), "list")
+        centerPanel.add(emptyLabel, "empty")
+        mainPanel.add(centerPanel, BorderLayout.CENTER)
 
         // Status bar at bottom.
         statusLabel.foreground = JBColor.GRAY
@@ -198,6 +204,7 @@ class SessionBrowserPanel(private val project: Project) {
                     service.newSession()
                 }
             })
+            add(createBranchFilterAction())
             add(object : AnAction("Refresh", "Reload sessions", AllIcons.Actions.Refresh) {
                 override fun actionPerformed(e: AnActionEvent) {
                     service.refresh()
@@ -211,6 +218,62 @@ class SessionBrowserPanel(private val project: Project) {
             .createActionToolbar("SessionBrowserToolbar", group, true)
         toolbar.targetComponent = mainPanel
         return toolbar
+    }
+
+    private fun createBranchFilterAction(): AnAction {
+        return object : AnAction("Filter by Branch", "Filter sessions by git branch", AllIcons.General.Filter) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+            override fun actionPerformed(e: AnActionEvent) {
+                val branches = allSessions
+                    .mapNotNull { it.gitBranch?.takeIf { b -> b.isNotBlank() } }
+                    .distinct()
+                    .sorted()
+
+                if (branches.isEmpty()) {
+                    showStatus("No branches found")
+                    return
+                }
+
+                val popupGroup = DefaultActionGroup().apply {
+                    // "All branches" option.
+                    add(object : AnAction(if (selectedBranch == null) "All branches  ✓" else "All branches") {
+                        override fun actionPerformed(e: AnActionEvent) {
+                            selectedBranch = null
+                            filterSessions()
+                        }
+                    })
+
+                    addSeparator()
+
+                    // Branch options.
+                    for (branch in branches) {
+                        val label = if (branch == selectedBranch) "$branch  ✓" else branch
+                        add(object : AnAction(label) {
+                            override fun actionPerformed(e: AnActionEvent) {
+                                selectedBranch = branch
+                                filterSessions()
+                            }
+                        })
+                    }
+                }
+
+                val popup = ActionManager.getInstance()
+                    .createActionPopupMenu("BranchFilterPopup", popupGroup)
+
+                val component = e.inputEvent?.component ?: return
+                popup.component.show(component, 0, component.height)
+            }
+
+            override fun update(e: AnActionEvent) {
+                // Highlight icon when filter is active.
+                e.presentation.text = if (selectedBranch != null) {
+                    "Branch: $selectedBranch"
+                } else {
+                    "Filter by Branch"
+                }
+            }
+        }
     }
 
     private fun createContextMenuGroup(): ActionGroup {
@@ -267,10 +330,17 @@ class SessionBrowserPanel(private val project: Project) {
 
     private fun filterSessions() {
         val query = searchField.text.trim().lowercase()
-        val filtered = if (query.isEmpty()) {
-            allSessions
-        } else {
-            allSessions.filter { session ->
+
+        var filtered = allSessions
+
+        // Branch filter.
+        if (selectedBranch != null) {
+            filtered = filtered.filter { it.gitBranch == selectedBranch }
+        }
+
+        // Text search.
+        if (query.isNotEmpty()) {
+            filtered = filtered.filter { session ->
                 session.displayTitle.lowercase().contains(query) ||
                     session.gitBranch?.lowercase()?.contains(query) == true ||
                     session.firstPrompt?.lowercase()?.contains(query) == true
@@ -279,22 +349,12 @@ class SessionBrowserPanel(private val project: Project) {
 
         listModel.clear()
         if (filtered.isEmpty()) {
-            val centerComponent = mainPanel.getComponent(1)
-            if (centerComponent != emptyLabel) {
-                mainPanel.remove(centerComponent)
-                mainPanel.add(emptyLabel, BorderLayout.CENTER)
-            }
+            cardLayout.show(centerPanel, "empty")
         } else {
             val grouped = groupByDate(filtered)
             grouped.forEach { listModel.addElement(it) }
-            val centerComponent = mainPanel.getComponent(1)
-            if (centerComponent == emptyLabel) {
-                mainPanel.remove(emptyLabel)
-                mainPanel.add(JBScrollPane(sessionList), BorderLayout.CENTER)
-            }
+            cardLayout.show(centerPanel, "list")
         }
-        mainPanel.revalidate()
-        mainPanel.repaint()
     }
 
     /**
