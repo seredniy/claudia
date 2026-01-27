@@ -16,7 +16,9 @@ import javax.swing.*
  * Custom cell renderer for session list items.
  * Renders a card-style cell with summary title and metadata subtitle.
  */
-class SessionCellRenderer : ListCellRenderer<SessionEntry> {
+class SessionCellRenderer(
+    private val hoveredIndexProvider: () -> Int = { -1 }
+) : ListCellRenderer<SessionEntry> {
 
     private val titleLabel = JLabel()
     private val subtitleLabel = JLabel()
@@ -56,11 +58,19 @@ class SessionCellRenderer : ListCellRenderer<SessionEntry> {
         parts.add(formatRelativeDate(value.modified))
         subtitleLabel.text = parts.joinToString("  ·  ")
 
-        // Selection colors.
+        // Selection and hover colors.
+        val isHovered = index == hoveredIndexProvider()
         if (isSelected) {
             panel.background = list.selectionBackground
             titleLabel.foreground = list.selectionForeground
             subtitleLabel.foreground = list.selectionForeground
+        } else if (isHovered) {
+            panel.background = JBColor(
+                UIUtil.getListBackground().brighter(),
+                UIUtil.getListBackground().brighter()
+            )
+            titleLabel.foreground = list.foreground
+            subtitleLabel.foreground = JBColor.GRAY
         } else {
             panel.background = list.background
             titleLabel.foreground = list.foreground

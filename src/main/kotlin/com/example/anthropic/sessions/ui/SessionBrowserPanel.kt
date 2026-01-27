@@ -17,9 +17,13 @@ import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.awt.Point
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
@@ -31,10 +35,20 @@ class SessionBrowserPanel(private val project: Project) {
     val mainPanel: JPanel = JPanel(BorderLayout())
     private val service = SessionService.getInstance(project)
     private val listModel = DefaultListModel<SessionEntry>()
-    private val sessionList = JBList(listModel)
+    private val sessionList = object : JBList<SessionEntry>(listModel) {
+        override fun getToolTipText(event: MouseEvent): String? {
+            val index = locationToIndex(event.point)
+            if (index < 0) return null
+            val cellBounds = getCellBounds(index, index) ?: return null
+            if (!cellBounds.contains(event.point)) return null
+            val session = model.getElementAt(index) ?: return null
+            return buildSessionTooltip(session)
+        }
+    }
     private val searchField = SearchTextField(false)
     private val emptyLabel = JLabel("No sessions found", SwingConstants.CENTER)
     private var allSessions: List<SessionEntry> = emptyList()
+    private var hoveredIndex: Int = -1
 
     init {
         setupUI()
@@ -58,9 +72,37 @@ class SessionBrowserPanel(private val project: Project) {
         mainPanel.add(topPanel, BorderLayout.NORTH)
 
         // Session list.
-        sessionList.cellRenderer = SessionCellRenderer()
+        val cellRenderer = SessionCellRenderer { hoveredIndex }
+        sessionList.cellRenderer = cellRenderer
         sessionList.selectionMode = ListSelectionModel.SINGLE_SELECTION
         sessionList.fixedCellHeight = -1
+
+        // Tooltip: fast appearance, wider dismiss.
+        val ttm = ToolTipManager.sharedInstance()
+        ttm.registerComponent(sessionList)
+        ttm.initialDelay = 300
+        ttm.dismissDelay = 15000
+
+        // Hover highlight.
+        sessionList.addMouseMotionListener(object : java.awt.event.MouseMotionAdapter() {
+            override fun mouseMoved(e: MouseEvent) {
+                val index = sessionList.locationToIndex(e.point)
+                val bounds = sessionList.getCellBounds(index, index)
+                val newHovered = if (index >= 0 && bounds != null && bounds.contains(e.point)) index else -1
+                if (newHovered != hoveredIndex) {
+                    hoveredIndex = newHovered
+                    sessionList.repaint()
+                }
+            }
+        })
+        sessionList.addMouseListener(object : MouseAdapter() {
+            override fun mouseExited(e: MouseEvent) {
+                if (hoveredIndex != -1) {
+                    hoveredIndex = -1
+                    sessionList.repaint()
+                }
+            }
+        })
 
         // Double-click to resume.
         sessionList.addMouseListener(object : MouseAdapter() {
@@ -222,6 +264,51 @@ class SessionBrowserPanel(private val project: Project) {
         mainPanel.repaint()
     }
 
+    private fun buildSessionTooltip(session: SessionEntry): String {
+        val sb = StringBuilder("<html><body><div style='width:320px;padding:4px'>")
+
+        // First prompt.
+        val prompt = session.firstPrompt?.takeIf { it.isNotBlank() }
+        if (prompt != null) {
+            val escaped = prompt.take(150)
+                .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            sb.append("<div style='margin-bottom:6px'>")
+            sb.append("<b>First prompt</b><br>")
+            sb.append("<span style='color:gray'>$escaped")
+            if (prompt.length > 150) sb.append("...")
+            sb.append("</span></div>")
+        }
+
+        // Metadata table.
+        sb.append("<table cellpadding='1' cellspacing='0'>")
+
+        session.gitBranch?.takeIf { it.isNotBlank() }?.let {
+            sb.append("<tr><td><b>Branch</b>&nbsp;&nbsp;</td><td>$it</td></tr>")
+        }
+
+        sb.append("<tr><td><b>Messages</b>&nbsp;&nbsp;</td><td>${session.messageCount}</td></tr>")
+
+        val created = formatExactDate(session.created)
+        sb.append("<tr><td><b>Created</b>&nbsp;&nbsp;</td><td>$created</td></tr>")
+
+        val modified = formatExactDate(session.modified)
+        sb.append("<tr><td><b>Modified</b>&nbsp;&nbsp;</td><td>$modified</td></tr>")
+
+        sb.append("<tr><td><b>ID</b>&nbsp;&nbsp;</td><td><code>${session.sessionId}</code></td></tr>")
+
+        sb.append("</table></div></body></html>")
+        return sb.toString()
+    }
+
+    private fun formatExactDate(isoDate: String): String {
+        return try {
+            val instant = Instant.parse(isoDate)
+            TOOLTIP_DATE_FORMATTER.format(instant)
+        } catch (e: Exception) {
+            isoDate
+        }
+    }
+
     private fun subscribeToChanges() {
         project.messageBus.connect()
             .subscribe(SessionService.SESSIONS_CHANGED_TOPIC,
@@ -232,5 +319,10 @@ class SessionBrowserPanel(private val project: Project) {
                         }
                     }
                 })
+    }
+
+    companion object {
+        private val TOOLTIP_DATE_FORMATTER = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
+            .withZone(ZoneId.systemDefault())
     }
 }
