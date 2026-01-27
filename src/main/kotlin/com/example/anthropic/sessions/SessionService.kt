@@ -96,6 +96,13 @@ class SessionService(private val project: Project) : Disposable {
     }
 
     /**
+     * Start a new Claude Code session in the IDE terminal.
+     */
+    fun newSession() {
+        executeInTerminal("claude")
+    }
+
+    /**
      * Resume a session in the IDE terminal.
      */
     fun resumeSession(sessionId: String) {

@@ -10,6 +10,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.JBColor
 import com.intellij.ui.PopupHandler
+import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
@@ -19,6 +20,8 @@ import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.*
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 
 /**
  * Main panel for the Session Browser tool window.
@@ -28,7 +31,9 @@ class SessionBrowserPanel(private val project: Project) {
     private val service = SessionService.getInstance(project)
     private val listModel = DefaultListModel<SessionEntry>()
     private val sessionList = JBList(listModel)
+    private val searchField = SearchTextField(false)
     private val emptyLabel = JLabel("No sessions found", SwingConstants.CENTER)
+    private var allSessions: List<SessionEntry> = emptyList()
 
     init {
         setupUI()
@@ -37,9 +42,19 @@ class SessionBrowserPanel(private val project: Project) {
     }
 
     private fun setupUI() {
-        // Toolbar.
+        // Top panel: search + buttons in one row.
         val toolbar = createToolbar()
-        mainPanel.add(toolbar.component, BorderLayout.NORTH)
+        val topPanel = JPanel(BorderLayout())
+
+        searchField.textEditor.emptyText.text = "Search sessions..."
+        searchField.textEditor.document.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent) = filterSessions()
+            override fun removeUpdate(e: DocumentEvent) = filterSessions()
+            override fun changedUpdate(e: DocumentEvent) = filterSessions()
+        })
+        topPanel.add(searchField, BorderLayout.CENTER)
+        topPanel.add(toolbar.component, BorderLayout.EAST)
+        mainPanel.add(topPanel, BorderLayout.NORTH)
 
         // Session list.
         sessionList.cellRenderer = SessionCellRenderer()
@@ -80,6 +95,11 @@ class SessionBrowserPanel(private val project: Project) {
 
     private fun createToolbar(): ActionToolbar {
         val group = DefaultActionGroup().apply {
+            add(object : AnAction("New Session", "Start a new Claude Code session", AllIcons.General.Add) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    service.newSession()
+                }
+            })
             add(object : AnAction("Refresh", "Reload sessions", AllIcons.Actions.Refresh) {
                 override fun actionPerformed(e: AnActionEvent) {
                     service.refresh()
@@ -140,14 +160,31 @@ class SessionBrowserPanel(private val project: Project) {
     }
 
     private fun loadSessions() {
-        val sessions = service.getSessions()
-        listModel.clear()
-        if (sessions.isEmpty()) {
-            mainPanel.remove(mainPanel.getComponent(1))
-            mainPanel.add(emptyLabel, BorderLayout.CENTER)
+        allSessions = service.getSessions()
+        filterSessions()
+    }
+
+    private fun filterSessions() {
+        val query = searchField.text.trim().lowercase()
+        val filtered = if (query.isEmpty()) {
+            allSessions
         } else {
-            sessions.forEach { listModel.addElement(it) }
-            // Make sure the list is showing, not the empty label.
+            allSessions.filter { session ->
+                session.displayTitle.lowercase().contains(query) ||
+                    session.gitBranch?.lowercase()?.contains(query) == true ||
+                    session.firstPrompt?.lowercase()?.contains(query) == true
+            }
+        }
+
+        listModel.clear()
+        if (filtered.isEmpty()) {
+            val centerComponent = mainPanel.getComponent(1)
+            if (centerComponent != emptyLabel) {
+                mainPanel.remove(centerComponent)
+                mainPanel.add(emptyLabel, BorderLayout.CENTER)
+            }
+        } else {
+            filtered.forEach { listModel.addElement(it) }
             val centerComponent = mainPanel.getComponent(1)
             if (centerComponent == emptyLabel) {
                 mainPanel.remove(emptyLabel)
