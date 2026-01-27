@@ -17,6 +17,7 @@ import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.*
@@ -81,6 +82,32 @@ class SessionBrowserPanel(private val project: Project) {
                     val popupMenu = ActionManager.getInstance()
                         .createActionPopupMenu("SessionBrowserContext", group)
                     popupMenu.component.show(comp, x, y)
+                }
+            }
+        })
+
+        // Keyboard shortcuts.
+        sessionList.inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "resumeSession")
+        sessionList.actionMap.put("resumeSession", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent?) {
+                val session = sessionList.selectedValue ?: return
+                service.resumeSession(session.sessionId)
+            }
+        })
+
+        sessionList.inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "deleteSession")
+        sessionList.inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0), "deleteSession")
+        sessionList.actionMap.put("deleteSession", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent?) {
+                val session = sessionList.selectedValue ?: return
+                val confirm = Messages.showYesNoDialog(
+                    project,
+                    "Delete session '${session.displayTitle}'?\n\nSession ID: ${session.sessionId}",
+                    "Delete Session",
+                    Messages.getWarningIcon()
+                )
+                if (confirm == Messages.YES) {
+                    service.deleteSession(session)
                 }
             }
         })
