@@ -67,6 +67,18 @@
                 id="Anthropic Usage Alerts"
                 displayType="BALLOON"
                 isLogByDefault="true"/>
+
+        <!-- Project-level service for session management -->
+        <projectService
+                serviceImplementation="com.example.anthropic.sessions.SessionService"/>
+
+        <!-- Session Browser tool window on right sidebar -->
+        <toolWindow
+                id="Claude Sessions"
+                anchor="right"
+                secondary="false"
+                icon="/icons/claudiaSessions.svg"
+                factoryClass="com.example.anthropic.sessions.ui.SessionBrowserToolWindowFactory"/>
     </extensions>
 
     <actions>
