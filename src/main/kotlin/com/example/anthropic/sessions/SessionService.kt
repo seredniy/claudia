@@ -26,6 +26,7 @@ class SessionService(private val project: Project) : Disposable {
     private var cachedSessions: List<SessionEntry> = emptyList()
     @Volatile
     private var watcherRunning = true
+    private var currentWatchedPath: Path? = null
 
     companion object {
         val SESSIONS_CHANGED_TOPIC = Topic.create(
@@ -35,7 +36,18 @@ class SessionService(private val project: Project) : Disposable {
 
         fun getInstance(project: Project): SessionService =
             project.getService(SessionService::class.java)
+
+        /**
+         * Get the default Claude projects directory.
+         */
+        fun getClaudeProjectsDir(): Path {
+            val home = System.getProperty("user.home")
+            return Path.of(home, ".claude", "projects")
+        }
     }
+
+    private val settings: SessionSettings
+        get() = SessionSettings.getInstance(project)
 
     init {
         startFileWatcher()
@@ -100,13 +112,88 @@ class SessionService(private val project: Project) : Disposable {
     }
 
     /**
-     * Get path to sessions-index.json for the current project.
+     * Get path to sessions-index.json.
+     * Uses custom directory if set, otherwise uses current project path.
      */
     fun getSessionsIndexPath(): Path {
+        val customDir = settings.customSessionsDirectory
+        if (customDir != null) {
+            return Path.of(customDir, "sessions-index.json")
+        }
+
         val home = System.getProperty("user.home")
         val projectPath = project.basePath ?: return Path.of(home, ".claude", "projects")
         val encoded = encodeProjectPath(projectPath)
         return Path.of(home, ".claude", "projects", encoded, "sessions-index.json")
+    }
+
+    /**
+     * Get the current sessions directory (without sessions-index.json).
+     */
+    fun getSessionsDirectory(): Path {
+        return getSessionsIndexPath().parent
+    }
+
+    /**
+     * Get display name for the current sessions directory.
+     */
+    fun getSessionsDirectoryDisplayName(): String {
+        val customDir = settings.customSessionsDirectory
+        if (customDir != null) {
+            // Extract the last component (encoded project path).
+            val path = Path.of(customDir)
+            return path.fileName?.toString() ?: customDir
+        }
+        return "Current Project"
+    }
+
+    /**
+     * Set custom sessions directory and refresh.
+     */
+    fun setSessionsDirectory(path: String?) {
+        settings.customSessionsDirectory = path
+        if (path != null) {
+            settings.addRecentDirectory(path)
+        }
+        restartFileWatcher()
+        refresh()
+    }
+
+    /**
+     * List available Claude project directories.
+     */
+    fun listAvailableProjects(): List<ClaudeProjectInfo> {
+        val projectsDir = getClaudeProjectsDir()
+        if (!projectsDir.exists()) return emptyList()
+
+        return try {
+            Files.list(projectsDir)
+                .filter { Files.isDirectory(it) }
+                .filter { Files.exists(it.resolve("sessions-index.json")) }
+                .map { dir ->
+                    val name = dir.fileName.toString()
+                    val decodedPath = name.replace("-", "/")
+                    ClaudeProjectInfo(
+                        directoryPath = dir.toString(),
+                        encodedName = name,
+                        decodedPath = decodedPath
+                    )
+                }
+                .toList()
+                .sortedBy { it.decodedPath }
+        } catch (e: Exception) {
+            log.warn("Failed to list Claude projects: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Restart file watcher for new directory.
+     */
+    private fun restartFileWatcher() {
+        // The watcher will pick up the new path on next iteration.
+        // For immediate effect, we could stop and restart the watcher thread.
+        // For now, just refresh and the watcher will adapt.
     }
 
     /**
@@ -258,3 +345,12 @@ class SessionService(private val project: Project) : Disposable {
 interface SessionsChangedListener {
     fun onSessionsChanged()
 }
+
+/**
+ * Info about a Claude project directory.
+ */
+data class ClaudeProjectInfo(
+    val directoryPath: String,
+    val encodedName: String,
+    val decodedPath: String
+)

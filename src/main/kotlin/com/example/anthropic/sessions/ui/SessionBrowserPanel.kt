@@ -1,8 +1,12 @@
 package com.example.anthropic.sessions.ui
 
+import com.example.anthropic.sessions.ClaudeProjectInfo
 import com.example.anthropic.sessions.SessionService
+import com.example.anthropic.sessions.SessionSettings
 import com.example.anthropic.sessions.SessionsChangedListener
 import com.example.anthropic.sessions.model.SessionEntry
+import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.example.anthropic.sessions.model.SessionListItem
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.*
@@ -205,6 +209,7 @@ class SessionBrowserPanel(private val project: Project) {
                 }
             })
             add(createBranchFilterAction())
+            add(createDirectoryPickerAction())
             add(object : AnAction("Refresh", "Reload sessions", AllIcons.Actions.Refresh) {
                 override fun actionPerformed(e: AnActionEvent) {
                     service.refresh()
@@ -218,6 +223,107 @@ class SessionBrowserPanel(private val project: Project) {
             .createActionToolbar("SessionBrowserToolbar", group, true)
         toolbar.targetComponent = mainPanel
         return toolbar
+    }
+
+    private fun createDirectoryPickerAction(): AnAction {
+        return object : AnAction("Select Directory", "Choose sessions directory", AllIcons.Nodes.Folder) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+            override fun actionPerformed(e: AnActionEvent) {
+                val availableProjects = service.listAvailableProjects()
+                val settings = SessionSettings.getInstance(project)
+
+                val popupGroup = DefaultActionGroup().apply {
+                    // Current project option.
+                    val currentProjectLabel = if (!settings.isUsingCustomDirectory()) {
+                        "Current Project  ✓"
+                    } else {
+                        "Current Project"
+                    }
+                    add(object : AnAction(currentProjectLabel, "Use current project's sessions", null) {
+                        override fun actionPerformed(e: AnActionEvent) {
+                            service.setSessionsDirectory(null)
+                            showStatus("Switched to current project")
+                        }
+                    })
+
+                    if (availableProjects.isNotEmpty()) {
+                        addSeparator("Available Projects")
+
+                        for (projectInfo in availableProjects) {
+                            val isSelected = settings.customSessionsDirectory == projectInfo.directoryPath
+                            val label = if (isSelected) {
+                                "${projectInfo.decodedPath}  ✓"
+                            } else {
+                                projectInfo.decodedPath
+                            }
+                            add(object : AnAction(label, projectInfo.directoryPath, null) {
+                                override fun actionPerformed(e: AnActionEvent) {
+                                    service.setSessionsDirectory(projectInfo.directoryPath)
+                                    showStatus("Switched to ${projectInfo.decodedPath}")
+                                }
+                            })
+                        }
+                    }
+
+                    // Recent directories.
+                    val recentDirs = settings.recentDirectories.filter { recent ->
+                        availableProjects.none { it.directoryPath == recent }
+                    }
+                    if (recentDirs.isNotEmpty()) {
+                        addSeparator("Recent")
+                        for (dir in recentDirs) {
+                            val path = java.nio.file.Path.of(dir)
+                            val name = path.fileName?.toString() ?: dir
+                            val isSelected = settings.customSessionsDirectory == dir
+                            val label = if (isSelected) "$name  ✓" else name
+                            add(object : AnAction(label, dir, null) {
+                                override fun actionPerformed(e: AnActionEvent) {
+                                    service.setSessionsDirectory(dir)
+                                    showStatus("Switched to $name")
+                                }
+                            })
+                        }
+                    }
+
+                    addSeparator()
+
+                    // Browse action.
+                    add(object : AnAction("Browse...", "Select custom directory", AllIcons.Actions.MenuOpen) {
+                        override fun actionPerformed(e: AnActionEvent) {
+                            val descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor()
+                            descriptor.title = "Select Claude Sessions Directory"
+                            descriptor.description = "Select a directory containing sessions-index.json"
+
+                            val initialDir = SessionService.getClaudeProjectsDir()
+                            val virtualFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                                .findFileByNioFile(initialDir)
+
+                            FileChooser.chooseFile(descriptor, project, virtualFile) { selected ->
+                                val selectedPath = selected.path
+                                service.setSessionsDirectory(selectedPath)
+                                showStatus("Switched to ${selected.name}")
+                            }
+                        }
+                    })
+                }
+
+                val popup = ActionManager.getInstance()
+                    .createActionPopupMenu("DirectoryPickerPopup", popupGroup)
+
+                val component = e.inputEvent?.component ?: return
+                popup.component.show(component, 0, component.height)
+            }
+
+            override fun update(e: AnActionEvent) {
+                val settings = SessionSettings.getInstance(project)
+                e.presentation.text = if (settings.isUsingCustomDirectory()) {
+                    service.getSessionsDirectoryDisplayName()
+                } else {
+                    "Select Directory"
+                }
+            }
+        }
     }
 
     private fun createBranchFilterAction(): AnAction {

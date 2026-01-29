@@ -88,6 +88,10 @@
         <projectService
                 serviceImplementation="com.example.anthropic.sessions.SessionService"/>
 
+        <!-- Project-level settings for session browser -->
+        <projectService
+                serviceImplementation="com.example.anthropic.sessions.SessionSettings"/>
+
         <!-- Session Browser tool window on right sidebar -->
         <toolWindow
                 id="Claude Sessions"
