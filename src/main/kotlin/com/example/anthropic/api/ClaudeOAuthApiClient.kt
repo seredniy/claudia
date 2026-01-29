@@ -11,17 +11,25 @@ import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
 
 /**
- * API client for personal claude.ai accounts (unofficial API)
+ * API client for Claude OAuth API.
+ * Uses the official OAuth endpoint: api.anthropic.com/api/oauth/usage
  *
- * WARNING: This uses unofficial/undocumented API endpoints that may change at any time.
- * Use at your own risk. This may violate Anthropic's Terms of Service.
+ * This is based on the claude-hud implementation:
+ * https://github.com/jarrodwatts/claude-hud/blob/main/src/usage-api.ts
  */
-class ClaudePersonalApiClient(
-    private val sessionKey: String,
-    private val organizationId: String
+class ClaudeOAuthApiClient(
+    private val accessToken: String
 ) {
     private val client: OkHttpClient
     private val gson = Gson()
+
+    companion object {
+        private const val OAUTH_API_HOST = "https://api.anthropic.com"
+        private const val USAGE_ENDPOINT = "/api/oauth/usage"
+        private const val ANTHROPIC_BETA_HEADER = "oauth-2025-04-20"
+        private const val USER_AGENT = "claude-usage-plugin/1.0"
+        private const val TIMEOUT_MS = 5000L
+    }
 
     init {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
@@ -30,22 +38,26 @@ class ClaudePersonalApiClient(
 
         client = OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .readTimeout(TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .writeTimeout(TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .build()
     }
 
-    suspend fun getPersonalUsage(): Result<PersonalUsageResponse> {
+    /**
+     * Fetches usage data from the OAuth API endpoint.
+     */
+    suspend fun getUsage(): Result<PersonalUsageResponse> {
         return retryWithExponentialBackoff {
             withContext(Dispatchers.IO) {
                 try {
-                    val url = "https://claude.ai/api/organizations/$organizationId/usage"
+                    val url = "$OAUTH_API_HOST$USAGE_ENDPOINT"
 
                     val httpRequest = Request.Builder()
                         .url(url)
-                        .header("Cookie", "sessionKey=$sessionKey")
-                        .header("User-Agent", "AnthropicUsagePlugin/1.0")
+                        .header("Authorization", "Bearer $accessToken")
+                        .header("anthropic-beta", ANTHROPIC_BETA_HEADER)
+                        .header("User-Agent", USER_AGENT)
                         .header("Accept", "application/json")
                         .get()
                         .build()
@@ -55,7 +67,7 @@ class ClaudePersonalApiClient(
                     if (response.isSuccessful) {
                         val body = response.body?.string()
                         if (body != null) {
-                            val usageResponse = gson.fromJson(body, PersonalUsageResponse::class.java)
+                            val usageResponse = parseUsageResponse(body)
                             Result.success(usageResponse)
                         } else {
                             Result.failure(ClaudeApiException(response.code, "Empty response body"))
@@ -71,6 +83,14 @@ class ClaudePersonalApiClient(
         }
     }
 
+    /**
+     * Parses the OAuth usage response.
+     * The response format is similar to the web API but may have slight differences.
+     */
+    private fun parseUsageResponse(json: String): PersonalUsageResponse {
+        return gson.fromJson(json, PersonalUsageResponse::class.java)
+    }
+
     private suspend fun <T> retryWithExponentialBackoff(
         maxRetries: Int = 3,
         initialDelayMillis: Long = 1000,
@@ -82,23 +102,23 @@ class ClaudePersonalApiClient(
         repeat(maxRetries) { attempt ->
             val result = block()
 
-            // Return immediately on success
+            // Return immediately on success.
             if (result.isSuccess) {
                 return result
             }
 
-            // Don't retry on auth errors
+            // Don't retry on auth errors.
             val exception = result.exceptionOrNull()
             if (exception is ClaudeApiException && exception.isUnauthorized) {
                 return result
             }
 
-            // Last attempt, return the failure
+            // Last attempt, return the failure.
             if (attempt == maxRetries - 1) {
                 return result
             }
 
-            // Wait before retrying
+            // Wait before retrying.
             delay(currentDelay)
             currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelayMillis)
         }
@@ -107,6 +127,9 @@ class ClaudePersonalApiClient(
     }
 }
 
+/**
+ * Exception for Claude API errors.
+ */
 class ClaudeApiException(
     val statusCode: Int,
     override val message: String
@@ -123,9 +146,9 @@ class ClaudeApiException(
 
     fun getUserMessage(): String {
         return when {
-            isUnauthorized -> "Invalid session key or organization ID. Please check your credentials in settings."
+            isUnauthorized -> "Invalid or expired access token. Please check your credentials."
             isRateLimited -> "Rate limit exceeded. Will retry later."
-            isServerError -> "Claude.ai is currently unavailable. Will retry later."
+            isServerError -> "Claude API is currently unavailable. Will retry later."
             else -> "Failed to fetch usage data: $message"
         }
     }

@@ -9,20 +9,19 @@ class AnthropicSettingsConfigurable : Configurable {
     private var component: AnthropicSettingsComponent? = null
     private val settings = service<AnthropicSettingsState>()
 
-    override fun getDisplayName() = "Claude.ai Usage Settings"
+    override fun getDisplayName() = "Claudia Settings"
 
     override fun createComponent(): JComponent {
         component = AnthropicSettingsComponent()
-        reset()  // Load current settings into UI
+        reset()  // Load current settings into UI.
         return component!!.panel
     }
 
     override fun isModified(): Boolean {
         val c = component ?: return false
 
-        // Check if any setting has changed
-        return c.sessionKey != settings.getSecureSessionKey() ||
-               c.organizationId != settings.organizationId ||
+        return c.useManualToken != settings.useManualToken ||
+               c.accessToken != settings.getSecureAccessToken() ||
                c.refreshInterval != settings.refreshIntervalMinutes ||
                c.showNotifications != settings.showNotifications ||
                c.notifyAtPercentage != settings.notifyAtPercentage
@@ -31,22 +30,24 @@ class AnthropicSettingsConfigurable : Configurable {
     override fun apply() {
         val c = component ?: return
 
-        // Save session key securely
-        val oldSessionKey = settings.getSecureSessionKey()
-        val oldOrgId = settings.organizationId
-        val newSessionKey = c.sessionKey
-        val newOrgId = c.organizationId
+        // Save old values to detect changes.
+        val oldUseManualToken = settings.useManualToken
+        val oldAccessToken = settings.getSecureAccessToken()
 
-        settings.setSecureSessionKey(newSessionKey)
-        settings.organizationId = newOrgId
+        // Save new values.
+        settings.useManualToken = c.useManualToken
+        settings.setSecureAccessToken(c.accessToken)
 
-        // Save other settings
+        // Save other settings.
         settings.refreshIntervalMinutes = c.refreshInterval
         settings.showNotifications = c.showNotifications
         settings.notifyAtPercentage = c.notifyAtPercentage
 
-        // Restart usage tracking if credentials changed or refresh interval changed
-        if (oldSessionKey != newSessionKey || oldOrgId != newOrgId || isModified) {
+        // Restart usage tracking if credentials changed.
+        val credentialsChanged = oldUseManualToken != c.useManualToken ||
+                oldAccessToken != c.accessToken
+
+        if (credentialsChanged) {
             val usageService = service<AnthropicUsageService>()
             usageService.restartTracking()
         }
@@ -55,9 +56,8 @@ class AnthropicSettingsConfigurable : Configurable {
     override fun reset() {
         val c = component ?: return
 
-        // Load current settings into UI
-        c.sessionKey = settings.getSecureSessionKey()
-        c.organizationId = settings.organizationId
+        c.useManualToken = settings.useManualToken
+        c.accessToken = settings.getSecureAccessToken()
         c.refreshInterval = settings.refreshIntervalMinutes
         c.showNotifications = settings.showNotifications
         c.notifyAtPercentage = settings.notifyAtPercentage

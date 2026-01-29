@@ -4,6 +4,7 @@ import com.example.anthropic.api.models.UsageData
 import com.example.anthropic.services.AnthropicUsageService
 import com.example.anthropic.services.UsageUpdateListener
 import com.example.anthropic.settings.AnthropicSettingsConfigurable
+import com.example.anthropic.settings.AnthropicSettingsState
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.options.ShowSettingsUtil
@@ -24,13 +25,16 @@ import javax.swing.*
 class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget, StatusBarWidget.Multiframe {
     private val panel = CustomProgressPanel()
     private val usageService = service<AnthropicUsageService>()
+    private val settings = service<AnthropicSettingsState>()
+    private var currentData: UsageData? = null
 
     init {
         setupUI()
         subscribeToUsageUpdates()
 
-        // Load initial data if available
+        // Load initial data if available.
         usageService.getCurrentUsage()?.let { data ->
+            currentData = data
             updateUI(data)
         }
     }
@@ -44,14 +48,17 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
     }
 
     private fun setupUI() {
-        panel.toolTipText = "Claude.ai Usage - Click for details"
+        panel.toolTipText = "Claude Usage - Click for details"
 
-        // Click handler to open settings
         panel.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (SwingUtilities.isLeftMouseButton(e)) {
+                    // Left click - open settings.
                     ShowSettingsUtil.getInstance()
                         .showSettingsDialog(project, AnthropicSettingsConfigurable::class.java)
+                } else if (SwingUtilities.isRightMouseButton(e)) {
+                    // Right click - show context menu.
+                    showContextMenu(e)
                 }
             }
 
@@ -65,11 +72,52 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
         })
     }
 
+    private fun showContextMenu(e: MouseEvent) {
+        val popup = JPopupMenu()
+
+        // Display mode options.
+        val fiveHourItem = JCheckBoxMenuItem("Show 5-hour limit")
+        fiveHourItem.isSelected = settings.displayMode == AnthropicSettingsState.UsageDisplayMode.FIVE_HOUR
+        fiveHourItem.addActionListener {
+            settings.displayMode = AnthropicSettingsState.UsageDisplayMode.FIVE_HOUR
+            currentData?.let { updateUI(it) }
+        }
+
+        val sevenDayItem = JCheckBoxMenuItem("Show 7-day limit")
+        sevenDayItem.isSelected = settings.displayMode == AnthropicSettingsState.UsageDisplayMode.SEVEN_DAY
+        sevenDayItem.addActionListener {
+            settings.displayMode = AnthropicSettingsState.UsageDisplayMode.SEVEN_DAY
+            currentData?.let { updateUI(it) }
+        }
+
+        popup.add(fiveHourItem)
+        popup.add(sevenDayItem)
+        popup.addSeparator()
+
+        // Refresh action.
+        val refreshItem = JMenuItem("Refresh")
+        refreshItem.addActionListener {
+            usageService.forceRefresh()
+        }
+        popup.add(refreshItem)
+
+        // Settings action.
+        val settingsItem = JMenuItem("Settings...")
+        settingsItem.addActionListener {
+            ShowSettingsUtil.getInstance()
+                .showSettingsDialog(project, AnthropicSettingsConfigurable::class.java)
+        }
+        popup.add(settingsItem)
+
+        popup.show(e.component, e.x, e.y)
+    }
+
     private fun subscribeToUsageUpdates() {
         ApplicationManager.getApplication().messageBus.connect(this)
             .subscribe(AnthropicUsageService.USAGE_TOPIC, object : UsageUpdateListener {
                 override fun onUsageUpdated(data: UsageData) {
                     ApplicationManager.getApplication().invokeLater {
+                        currentData = data
                         updateUI(data)
                     }
                 }
@@ -83,21 +131,36 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
     }
 
     private fun updateUI(data: UsageData) {
-        val percentage = data.percentage.toInt().coerceIn(0, 100)
-
-        // Format: "35% • 2h 15m" or just "35%" if no time data
-        val timeRemaining = data.fiveHourTimeRemaining
-        val text = if (timeRemaining != null) {
-            "$percentage% • $timeRemaining"
-        } else {
-            "$percentage%"
+        // Get percentage based on display mode.
+        val (percentage, timeRemaining, label) = when (settings.displayMode) {
+            AnthropicSettingsState.UsageDisplayMode.FIVE_HOUR -> {
+                Triple(
+                    data.fiveHourUtilization.toInt().coerceIn(0, 100),
+                    data.fiveHourTimeRemaining,
+                    "5h"
+                )
+            }
+            AnthropicSettingsState.UsageDisplayMode.SEVEN_DAY -> {
+                Triple(
+                    data.sevenDayUtilization.toInt().coerceIn(0, 100),
+                    null,  // No time remaining for 7-day.
+                    "7d"
+                )
+            }
         }
 
-        // Color based on usage percentage
+        // Format: "5h: 35% • 2h 15m" or "7d: 12%".
+        val text = if (timeRemaining != null) {
+            "$label: $percentage% • $timeRemaining"
+        } else {
+            "$label: $percentage%"
+        }
+
+        // Color based on usage percentage.
         val color = when {
-            percentage >= 90 -> JBColor(Color(200, 50, 50), Color(180, 40, 40))      // Red
-            percentage >= 75 -> JBColor(Color(255, 165, 0), Color(200, 130, 0))      // Orange
-            else -> JBColor(Color(50, 150, 50), Color(80, 170, 80))                  // Green
+            percentage >= 90 -> JBColor(Color(200, 50, 50), Color(180, 40, 40))      // Red.
+            percentage >= 75 -> JBColor(Color(255, 165, 0), Color(200, 130, 0))      // Orange.
+            else -> JBColor(Color(50, 150, 50), Color(80, 170, 80))                  // Green.
         }
 
         panel.updateUsage(percentage, text, color)
@@ -123,27 +186,26 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
 
         return """
             <html>
-            <b>Claude.ai Usage (Personal Account)</b><br/>
+            <b>Claude Usage</b><br/>
             <br/>
             <b>5-Hour Limit:</b> ${String.format("%.1f", data.fiveHourUtilization)}%<br/>
             ${data.formattedFiveHourResetsAt?.let { "&nbsp;&nbsp;Resets at: $it<br/>" } ?: ""}
+            ${data.fiveHourTimeRemaining?.let { "&nbsp;&nbsp;Time remaining: $it<br/>" } ?: ""}
             <br/>
             <b>7-Day Limit:</b> ${String.format("%.1f", data.sevenDayUtilization)}%<br/>
             ${data.formattedSevenDayResetsAt?.let { "&nbsp;&nbsp;Resets at: $it<br/>" } ?: ""}
-            <br/>
-            <b>Overall Usage:</b> ${String.format("%.1f", data.percentage)}%<br/>
             <br/>
             <i>Last Updated: ${data.formattedLastUpdate}</i>
             $breakdown
             <br/>
             <br/>
-            <i>Click to open settings</i>
+            <i>Left-click: Settings | Right-click: Options</i>
             </html>
         """.trimIndent()
     }
 
     override fun install(statusBar: StatusBar) {
-        // Widget installed in status bar
+        // Widget installed in status bar.
     }
 
     override fun dispose() {
@@ -151,7 +213,7 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
     }
 
     /**
-     * Custom panel with progress bar painting (like Memory Indicator)
+     * Custom panel with progress bar painting (like Memory Indicator).
      */
     private class CustomProgressPanel : JPanel() {
         private var percentage: Int = 0
@@ -159,7 +221,7 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
         private var barColor: Color = JBColor.GREEN
 
         init {
-            preferredSize = Dimension(120, 20)
+            preferredSize = Dimension(130, 20)
             border = JBUI.Borders.empty(0, 2)
             isOpaque = false
         }
@@ -184,22 +246,22 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
             val x = insets.left
             val y = insets.top
 
-            // Draw background
+            // Draw background.
             g2.color = if (UIUtil.isUnderDarcula()) Gray._85 else Gray._200
             g2.fillRoundRect(x, y, width, height, 3, 3)
 
-            // Draw filled progress
+            // Draw filled progress.
             if (percentage > 0) {
                 val filledWidth = (width * percentage / 100).coerceAtLeast(0)
                 g2.color = barColor
                 g2.fillRoundRect(x, y, filledWidth, height, 3, 3)
             }
 
-            // Draw border
+            // Draw border.
             g2.color = if (UIUtil.isUnderDarcula()) Gray._70 else Gray._180
             g2.drawRoundRect(x, y, width - 1, height - 1, 3, 3)
 
-            // Draw text centered
+            // Draw text centered.
             g2.color = if (UIUtil.isUnderDarcula()) Gray._220 else Gray._50
             g2.font = JBUI.Fonts.toolbarSmallComboBoxFont()
 
