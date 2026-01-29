@@ -1,10 +1,12 @@
 package com.example.anthropic.settings
 
 import com.example.anthropic.api.AnthropicApiService
+import com.example.anthropic.api.ClaudeCredentialDiscovery
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBTextField
@@ -13,43 +15,58 @@ import com.intellij.util.ui.JBUI
 import kotlinx.coroutines.runBlocking
 import java.awt.BorderLayout
 import java.awt.Color
-import java.awt.Cursor
 import javax.swing.*
 
 class AnthropicSettingsComponent {
     val panel: JPanel
-    private val sessionKeyField = JBPasswordField()
-    private val organizationIdField = JBTextField()
+
+    // Credentials.
+    private val useManualTokenCheckbox = JBCheckBox("Use manual access token")
+    private val accessTokenField = JBPasswordField()
+    private val autoDiscoveryStatusLabel = JBLabel()
+    private val checkCredentialsButton = JButton("Check Credentials")
+
+    // Common fields.
     private val refreshIntervalField = JBTextField()
     private val showNotificationsCheckbox = JCheckBox("Show usage notifications")
     private val notifyAtPercentageField = JBTextField()
     private val testConnectionButton = JButton("Test Connection")
     private val statusLabel = JBLabel()
 
+    private val credentialDiscovery = ClaudeCredentialDiscovery()
+
     init {
-        // Set default values
+        // Set default values.
         refreshIntervalField.text = "5"
         notifyAtPercentageField.text = "90"
 
-        // Create help labels
-        val sessionKeyHelpLabel = JBLabel("<html><i>Get your sessionKey cookie from " +
-                "<a href='https://claude.ai'>claude.ai</a>" +
-                " (see instructions below)</i></html>")
-        sessionKeyHelpLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        // Access token field enabled state depends on checkbox.
+        accessTokenField.isEnabled = false
+        useManualTokenCheckbox.addActionListener {
+            accessTokenField.isEnabled = useManualTokenCheckbox.isSelected
+            checkCredentialsButton.isEnabled = !useManualTokenCheckbox.isSelected
+            if (!useManualTokenCheckbox.isSelected) {
+                checkOAuthCredentials()
+            }
+        }
 
-        val orgIdHelpLabel = JBLabel("<html><i>Find your organization ID in the Network tab " +
-                "(format: 14038684-39d3-451d-99ca-0db1367c3edd)</i></html>")
+        checkCredentialsButton.addActionListener {
+            checkOAuthCredentials()
+        }
 
-        // Build the form
+        // Build the form.
         panel = FormBuilder.createFormBuilder()
-            .addLabeledComponent("Session Key:", sessionKeyField, 1, false)
-            .addComponentToRightColumn(sessionKeyHelpLabel, 0)
+            .addComponent(JBLabel("<html><b>Credentials</b></html>"))
+            .addVerticalGap(5)
+            .addComponent(createAutoDiscoveryPanel())
             .addVerticalGap(10)
-            .addLabeledComponent("Organization ID:", organizationIdField, 1, false)
-            .addComponentToRightColumn(orgIdHelpLabel, 0)
+            .addComponent(useManualTokenCheckbox)
+            .addLabeledComponent("Access Token:", accessTokenField, 1, false)
             .addVerticalGap(15)
             .addSeparator()
             .addVerticalGap(10)
+            .addComponent(JBLabel("<html><b>Settings</b></html>"))
+            .addVerticalGap(5)
             .addLabeledComponent("Refresh interval (minutes):", refreshIntervalField, 1, false)
             .addVerticalGap(10)
             .addComponent(showNotificationsCheckbox)
@@ -63,9 +80,37 @@ class AnthropicSettingsComponent {
             .addComponentFillVertically(JPanel(), 0)
             .panel
 
-        // Add test connection button listener
+        // Test connection button listener.
         testConnectionButton.addActionListener {
             testConnection()
+        }
+
+        // Check credentials on init.
+        checkOAuthCredentials()
+    }
+
+    private fun createAutoDiscoveryPanel(): JPanel {
+        val statusPanel = JPanel(BorderLayout(10, 0))
+        statusPanel.add(JBLabel("Auto-discovery:"), BorderLayout.WEST)
+        statusPanel.add(autoDiscoveryStatusLabel, BorderLayout.CENTER)
+        statusPanel.add(checkCredentialsButton, BorderLayout.EAST)
+        return statusPanel
+    }
+
+    private fun checkOAuthCredentials() {
+        val credentials = credentialDiscovery.discoverAccessToken()
+        if (credentials != null) {
+            val sourceStr = when (credentials.source) {
+                com.example.anthropic.api.CredentialSource.FILE -> "~/.claude/.credentials.json"
+                com.example.anthropic.api.CredentialSource.KEYCHAIN -> "macOS Keychain"
+                com.example.anthropic.api.CredentialSource.MANUAL -> "manual"
+            }
+            val expiredStr = if (credentials.isExpired()) " (EXPIRED)" else ""
+            autoDiscoveryStatusLabel.text = "✓ Found in $sourceStr$expiredStr"
+            autoDiscoveryStatusLabel.foreground = if (credentials.isExpired()) Color(255, 165, 0) else Color(0, 128, 0)
+        } else {
+            autoDiscoveryStatusLabel.text = "✗ No credentials found"
+            autoDiscoveryStatusLabel.foreground = Color(255, 0, 0)
         }
     }
 
@@ -80,24 +125,21 @@ class AnthropicSettingsComponent {
     private fun createInstructionsPanel(): JPanel {
         val instructionsText = """
             <html>
-            <h3>How to get your Session Key:</h3>
+            <h3>Auto-discovery (Recommended)</h3>
+            <p>If you have Claude Code installed and signed in, credentials will be automatically discovered from macOS Keychain.</p>
             <ol>
-              <li>Open <a href='https://claude.ai'>claude.ai</a> in your browser and log in</li>
-              <li>Press <b>F12</b> to open DevTools</li>
-              <li>Go to <b>Application</b> tab → <b>Cookies</b> → https://claude.ai</li>
-              <li>Find the <b>sessionKey</b> cookie and copy its value</li>
-              <li>Paste it in the "Session Key" field above</li>
+              <li>Install <a href='https://claude.ai/download'>Claude Code</a></li>
+              <li>Sign in with your Claude account</li>
+              <li>Credentials will be auto-discovered</li>
             </ol>
-            <h3>How to get your Organization ID:</h3>
+
+            <h3>Manual Token</h3>
+            <p>If auto-discovery doesn't work, you can enter your access token manually:</p>
             <ol>
-              <li>While on <a href='https://claude.ai/settings/usage'>claude.ai/settings/usage</a></li>
-              <li>Open DevTools (<b>F12</b>) → <b>Network</b> tab</li>
-              <li>Refresh the page (<b>F5</b>)</li>
-              <li>Look for a request to <b>/api/organizations/{id}/usage</b></li>
-              <li>Copy the UUID from the URL (format: 14038684-39d3-451d-99ca-0db1367c3edd)</li>
-              <li>Paste it in the "Organization ID" field above</li>
+              <li>Find your token in <code>~/.claude/.credentials.json</code></li>
+              <li>Or extract it from macOS Keychain (service: "Claude Code-credentials")</li>
+              <li>Check "Use manual access token" and paste the token</li>
             </ol>
-            <p><b>⚠️ Warning:</b> This uses unofficial API. Use at your own risk.</p>
             </html>
         """.trimIndent()
 
@@ -108,16 +150,19 @@ class AnthropicSettingsComponent {
         return instructionsPanel
     }
 
-    var sessionKey: String?
-        get() = String(sessionKeyField.password).takeIf { it.isNotBlank() }
+    // Property accessors.
+    var useManualToken: Boolean
+        get() = useManualTokenCheckbox.isSelected
         set(value) {
-            sessionKeyField.text = value ?: ""
+            useManualTokenCheckbox.isSelected = value
+            accessTokenField.isEnabled = value
+            checkCredentialsButton.isEnabled = !value
         }
 
-    var organizationId: String
-        get() = organizationIdField.text
+    var accessToken: String?
+        get() = String(accessTokenField.password).takeIf { it.isNotBlank() }
         set(value) {
-            organizationIdField.text = value
+            accessTokenField.text = value ?: ""
         }
 
     var refreshInterval: Int
@@ -139,34 +184,37 @@ class AnthropicSettingsComponent {
         }
 
     private fun testConnection() {
-        val key = sessionKey
-        val orgId = organizationId
-
-        if (key.isNullOrBlank()) {
-            setStatus("Please enter a session key", StatusType.ERROR)
+        // Validate inputs.
+        if (useManualToken && accessToken.isNullOrBlank()) {
+            setStatus("Please enter an access token", StatusType.ERROR)
             return
         }
 
-        if (orgId.isBlank()) {
-            setStatus("Please enter an organization ID", StatusType.ERROR)
+        if (!useManualToken && credentialDiscovery.discoverAccessToken() == null) {
+            setStatus("No credentials found. Install Claude Code and sign in.", StatusType.ERROR)
             return
         }
 
         testConnectionButton.isEnabled = false
         setStatus("Testing connection...", StatusType.INFO)
 
-        // Test in background
+        // Test in background.
         ProgressManager.getInstance().run(object : Task.Backgroundable(
-            null, "Testing Claude.ai Connection", true
+            null, "Testing Claude API Connection", true
         ) {
             var success = false
             var errorMessage = ""
 
             override fun run(indicator: ProgressIndicator) {
-                indicator.text = "Connecting to claude.ai..."
+                indicator.text = "Connecting to Claude API..."
 
                 val apiService = AnthropicApiService()
-                apiService.initialize(key, orgId)
+
+                if (useManualToken) {
+                    apiService.initializeWithToken(accessToken!!)
+                } else {
+                    apiService.initializeWithAutoDiscovery()
+                }
 
                 val result = runBlocking {
                     apiService.testConnection()
@@ -203,9 +251,9 @@ class AnthropicSettingsComponent {
         ApplicationManager.getApplication().invokeLater {
             statusLabel.text = message
             statusLabel.foreground = when (type) {
-                StatusType.SUCCESS -> Color(0, 128, 0)  // Green
-                StatusType.ERROR -> Color(255, 0, 0)     // Red
-                StatusType.INFO -> Color(0, 0, 0)        // Black
+                StatusType.SUCCESS -> Color(0, 128, 0)  // Green.
+                StatusType.ERROR -> Color(255, 0, 0)     // Red.
+                StatusType.INFO -> Color(0, 0, 0)        // Black.
             }
         }
     }

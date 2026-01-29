@@ -21,8 +21,17 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         var refreshIntervalMinutes: Int = 5,
         var showNotifications: Boolean = true,
         var notifyAtPercentage: Int = 90,
-        var organizationId: String = ""  // claude.ai organization ID
+        var useManualToken: Boolean = false,  // false = auto-discovery, true = manual token
+        var displayMode: UsageDisplayMode = UsageDisplayMode.FIVE_HOUR  // Which limit to show in status bar
     )
+
+    /**
+     * Which usage limit to display in the status bar.
+     */
+    enum class UsageDisplayMode {
+        FIVE_HOUR,
+        SEVEN_DAY
+    }
 
     override fun getState(): State = myState
 
@@ -30,7 +39,7 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         myState = state
     }
 
-    // Convenience accessors
+    // Convenience accessors.
     var refreshIntervalMinutes: Int
         get() = myState.refreshIntervalMinutes
         set(value) {
@@ -49,43 +58,49 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
             myState.notifyAtPercentage = value
         }
 
-    var organizationId: String
-        get() = myState.organizationId
+    var useManualToken: Boolean
+        get() = myState.useManualToken
         set(value) {
-            myState.organizationId = value
+            myState.useManualToken = value
         }
 
-    // Secure sessionKey storage using PasswordSafe
-    fun getSecureSessionKey(): String? {
+    var displayMode: UsageDisplayMode
+        get() = myState.displayMode
+        set(value) {
+            myState.displayMode = value
+        }
+
+    // Secure OAuth access token storage (for manual mode).
+    fun getSecureAccessToken(): String? {
         val passwordSafe = PasswordSafe.instance
-        val attributes = createCredentialAttributes()
+        val attributes = createCredentialAttributes(CREDENTIAL_ACCESS_TOKEN)
         return passwordSafe.getPassword(attributes)
     }
 
-    fun setSecureSessionKey(key: String?) {
+    fun setSecureAccessToken(token: String?) {
         val passwordSafe = PasswordSafe.instance
-        val attributes = createCredentialAttributes()
+        val attributes = createCredentialAttributes(CREDENTIAL_ACCESS_TOKEN)
 
-        if (key != null && key.isNotBlank()) {
-            val credentials = Credentials(CREDENTIAL_USER, key)
+        if (token != null && token.isNotBlank()) {
+            val credentials = Credentials(CREDENTIAL_ACCESS_TOKEN, token)
             passwordSafe.set(attributes, credentials)
         } else {
             passwordSafe.set(attributes, null)
         }
     }
 
-    fun hasSessionKey(): Boolean {
-        return !getSecureSessionKey().isNullOrBlank()
+    fun hasAccessToken(): Boolean {
+        return !getSecureAccessToken().isNullOrBlank()
     }
 
-    private fun createCredentialAttributes(): CredentialAttributes {
+    private fun createCredentialAttributes(key: String): CredentialAttributes {
         return CredentialAttributes(
-            serviceName = "ClaudeAiSessionKey",
-            userName = CREDENTIAL_USER
+            serviceName = "ClaudeUsagePlugin",
+            userName = key
         )
     }
 
     companion object {
-        private const val CREDENTIAL_USER = "claude-ai-session-key"
+        private const val CREDENTIAL_ACCESS_TOKEN = "claude-oauth-access-token"
     }
 }

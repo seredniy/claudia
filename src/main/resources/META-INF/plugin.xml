@@ -88,9 +88,6 @@
         <projectService
                 serviceImplementation="com.example.anthropic.sessions.SessionService"/>
 
-        <!-- Icon mapping for New UI (expui) -->
-        <iconMapper mappingFile="IconMappings.json"/>
-
         <!-- Session Browser tool window on right sidebar -->
         <toolWindow
                 id="Claude Sessions"

@@ -45,21 +45,17 @@ class AnthropicUsageService : Disposable {
         log.info("Starting usage tracking")
         stopTracking()
 
-        val sessionKey = settings.getSecureSessionKey()
-        val organizationId = settings.organizationId
-
-        if (sessionKey.isNullOrBlank() || organizationId.isBlank()) {
-            log.info("No session key or organization ID configured, skipping usage tracking")
+        val initialized = initializeApiService()
+        if (!initialized) {
+            log.info("API service not initialized, skipping usage tracking")
             return
         }
 
-        apiService.initialize(sessionKey, organizationId)
-
         refreshJob = scope.launch {
-            // Initial fetch
+            // Initial fetch.
             fetchAndPublishUsage()
 
-            // Periodic refresh
+            // Periodic refresh.
             while (isActive) {
                 delay(settings.refreshIntervalMinutes * 60 * 1000L)
                 fetchAndPublishUsage()
@@ -67,6 +63,29 @@ class AnthropicUsageService : Disposable {
         }
 
         log.info("Usage tracking started with ${settings.refreshIntervalMinutes} minute interval")
+    }
+
+    /**
+     * Initialize the API service.
+     * Returns true if successfully initialized.
+     */
+    private fun initializeApiService(): Boolean {
+        return if (settings.useManualToken) {
+            val accessToken = settings.getSecureAccessToken()
+            if (accessToken.isNullOrBlank()) {
+                log.info("No manual access token configured")
+                return false
+            }
+            apiService.initializeWithToken(accessToken)
+            true
+        } else {
+            val success = apiService.initializeWithAutoDiscovery()
+            if (!success) {
+                log.info("OAuth auto-discovery failed, no credentials found")
+                publishError("No Claude Code credentials found. Please install Claude Code and sign in.")
+            }
+            success
+        }
     }
 
     fun stopTracking() {
@@ -82,16 +101,16 @@ class AnthropicUsageService : Disposable {
     }
 
     private suspend fun fetchAndPublishUsage() {
-        log.info("Fetching usage data from Anthropic API")
+        log.info("Fetching usage data")
 
         val result = apiService.fetchCurrentUsage()
 
         result.onSuccess { usageData ->
-            log.info("Successfully fetched usage data: 5h=${usageData.fiveHourUtilization}% 7d=${usageData.sevenDayUtilization}% (max=${usageData.percentage}%)")
+            log.info("Successfully fetched usage data: 5h=${usageData.fiveHourUtilization}% 7d=${usageData.sevenDayUtilization}%")
             cache.update(usageData)
             publishUpdate(usageData)
 
-            // Check if notification needed
+            // Check if notification needed.
             if (settings.showNotifications && shouldShowNotification(usageData)) {
                 showUsageWarning(usageData)
             }
@@ -108,10 +127,10 @@ class AnthropicUsageService : Disposable {
     }
 
     private fun shouldShowNotification(data: UsageData): Boolean {
-        val currentPercentage = data.percentage.toInt()
+        val currentPercentage = data.fiveHourUtilization.toInt()
         val threshold = settings.notifyAtPercentage
 
-        // Only show notification if we've crossed the threshold and haven't notified at this level yet
+        // Only show notification if we've crossed the threshold and haven't notified at this level yet.
         if (currentPercentage >= threshold && lastNotificationPercentage < threshold) {
             lastNotificationPercentage = currentPercentage
             return true
@@ -137,15 +156,15 @@ class AnthropicUsageService : Disposable {
             val notification = NotificationGroupManager.getInstance()
                 .getNotificationGroup("Anthropic Usage Alerts")
                 .createNotification(
-                    "Claude.ai Usage Warning",
-                    "You have used ${String.format("%.1f", data.percentage)}% of your usage limit",
+                    "Claude Usage Warning",
+                    "5-hour limit: ${String.format("%.1f", data.fiveHourUtilization)}%",
                     NotificationType.WARNING
                 )
 
             notification.addAction(object : AnAction("View Settings") {
                 override fun actionPerformed(e: AnActionEvent) {
                     ShowSettingsUtil.getInstance()
-                        .showSettingsDialog(e.project, "Anthropic API Settings")
+                        .showSettingsDialog(e.project, "Claudia Settings")
                     notification.expire()
                 }
             })
@@ -162,6 +181,13 @@ class AnthropicUsageService : Disposable {
         }
     }
 
+    /**
+     * Check if OAuth credentials can be auto-discovered.
+     */
+    fun canAutoDiscoverCredentials(): Boolean {
+        return apiService.canAutoDiscoverCredentials()
+    }
+
     override fun dispose() {
         log.info("Disposing AnthropicUsageService")
         scope.cancel()
@@ -169,9 +195,10 @@ class AnthropicUsageService : Disposable {
     }
 
     /**
-     * Project listener to start tracking when first project opens
+     * Project listener to start tracking when first project opens.
      */
     class ProjectListener : ProjectManagerListener {
+        @Suppress("DEPRECATION")
         override fun projectOpened(project: Project) {
             service<AnthropicUsageService>().startTracking()
         }

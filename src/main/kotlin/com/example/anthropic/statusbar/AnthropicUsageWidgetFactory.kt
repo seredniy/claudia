@@ -1,5 +1,6 @@
 package com.example.anthropic.statusbar
 
+import com.example.anthropic.api.ClaudeCredentialDiscovery
 import com.example.anthropic.settings.AnthropicSettingsState
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
@@ -11,12 +12,16 @@ import com.intellij.openapi.wm.StatusBarWidgetFactory
 class AnthropicUsageWidgetFactory : StatusBarWidgetFactory {
     override fun getId() = "com.example.anthropic.statusbar.widget"
 
-    override fun getDisplayName() = "Claude.ai Usage"
+    override fun getDisplayName() = "Claude Usage"
 
     override fun isAvailable(project: Project): Boolean {
-        // Only show widget if session key is configured
         val settings = service<AnthropicSettingsState>()
-        return settings.hasSessionKey()
+
+        return if (settings.useManualToken) {
+            settings.hasAccessToken()
+        } else {
+            ClaudeCredentialDiscovery().hasCredentials()
+        }
     }
 
     override fun createWidget(project: Project): StatusBarWidget {
