@@ -245,6 +245,7 @@ class SessionBrowserPanel(private val project: Project) {
                     add(object : AnAction(currentProjectLabel, "Use current project's sessions", null) {
                         override fun getActionUpdateThread() = ActionUpdateThread.EDT
                         override fun actionPerformed(e: AnActionEvent) {
+                            selectedBranch = null
                             service.setSessionsDirectory(null)
                             showStatus("Switched to current project")
                         }
@@ -263,6 +264,7 @@ class SessionBrowserPanel(private val project: Project) {
                             add(object : AnAction(label, projectInfo.directoryPath, null) {
                                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                                 override fun actionPerformed(e: AnActionEvent) {
+                                    selectedBranch = null
                                     service.setSessionsDirectory(projectInfo.directoryPath)
                                     showStatus("Switched to ${projectInfo.decodedPath}")
                                 }
@@ -284,6 +286,7 @@ class SessionBrowserPanel(private val project: Project) {
                             add(object : AnAction(label, dir, null) {
                                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                                 override fun actionPerformed(e: AnActionEvent) {
+                                    selectedBranch = null
                                     service.setSessionsDirectory(dir)
                                     showStatus("Switched to $name")
                                 }
@@ -307,6 +310,7 @@ class SessionBrowserPanel(private val project: Project) {
 
                             FileChooser.chooseFile(descriptor, project, virtualFile) { selected ->
                                 val selectedPath = selected.path
+                                selectedBranch = null
                                 service.setSessionsDirectory(selectedPath)
                                 showStatus("Switched to ${selected.name}")
                             }
@@ -381,10 +385,13 @@ class SessionBrowserPanel(private val project: Project) {
 
             override fun update(e: AnActionEvent) {
                 // Highlight icon when filter is active.
-                e.presentation.text = if (selectedBranch != null) {
-                    "Branch: $selectedBranch"
+                if (selectedBranch != null) {
+                    e.presentation.text = "Branch: $selectedBranch"
+                    e.presentation.icon = com.intellij.execution.runners.ExecutionUtil
+                        .getLiveIndicator(AllIcons.General.Filter)
                 } else {
-                    "Filter by Branch"
+                    e.presentation.text = "Filter by Branch"
+                    e.presentation.icon = AllIcons.General.Filter
                 }
             }
         }
