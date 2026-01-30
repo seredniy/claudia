@@ -29,12 +29,17 @@ class AnthropicUsageService : Disposable {
     private val log = logger<AnthropicUsageService>()
 
     private var lastNotificationPercentage = 0
+    private var isInErrorState = false
+    private var consecutiveErrors = 0
 
     companion object {
         val USAGE_TOPIC = Topic.create(
             "Anthropic Usage Updates",
             UsageUpdateListener::class.java
         )
+
+        // Retry intervals in seconds: 30s, 1m, 2m, 5m (then stays at 5m).
+        private val RETRY_INTERVALS = listOf(30L, 60L, 120L, 300L)
     }
 
     init {
@@ -47,17 +52,30 @@ class AnthropicUsageService : Disposable {
 
         val initialized = initializeApiService()
         if (!initialized) {
-            log.info("API service not initialized, skipping usage tracking")
-            return
+            log.info("API service not initialized, will retry periodically")
+            isInErrorState = true
+            consecutiveErrors = 1
         }
 
         refreshJob = scope.launch {
             // Initial fetch.
             fetchAndPublishUsage()
 
-            // Periodic refresh.
+            // Periodic refresh with adaptive interval based on error state.
             while (isActive) {
-                delay(settings.refreshIntervalMinutes * 60 * 1000L)
+                val delayMs = if (isInErrorState) {
+                    // Use exponential backoff for retries.
+                    val retryIndex = (consecutiveErrors - 1).coerceIn(0, RETRY_INTERVALS.lastIndex)
+                    RETRY_INTERVALS[retryIndex] * 1000L
+                } else {
+                    settings.refreshIntervalMinutes * 60 * 1000L
+                }
+                delay(delayMs)
+
+                // Re-initialize credentials on each retry when in error state.
+                if (isInErrorState) {
+                    initializeApiService()
+                }
                 fetchAndPublishUsage()
             }
         }
@@ -107,6 +125,14 @@ class AnthropicUsageService : Disposable {
 
         result.onSuccess { usageData ->
             log.info("Successfully fetched usage data: 5h=${usageData.fiveHourUtilization}% 7d=${usageData.sevenDayUtilization}%")
+
+            // Clear error state on success.
+            if (isInErrorState) {
+                log.info("Recovered from error state")
+                isInErrorState = false
+                consecutiveErrors = 0
+            }
+
             cache.update(usageData)
             publishUpdate(usageData)
 
@@ -122,6 +148,14 @@ class AnthropicUsageService : Disposable {
                 else -> error.message ?: "Unknown error"
             }
             log.warn("Failed to fetch usage data: $errorMessage", error)
+
+            // Track error state for retry logic.
+            isInErrorState = true
+            consecutiveErrors++
+            val retryIndex = (consecutiveErrors - 1).coerceIn(0, RETRY_INTERVALS.lastIndex)
+            val nextRetrySeconds = RETRY_INTERVALS[retryIndex]
+            log.info("Error state: will retry in ${nextRetrySeconds}s (attempt $consecutiveErrors)")
+
             publishError(errorMessage)
         }
     }
@@ -177,6 +211,8 @@ class AnthropicUsageService : Disposable {
 
     fun forceRefresh() {
         scope.launch {
+            // Re-initialize credentials in case they've changed.
+            initializeApiService()
             fetchAndPublishUsage()
         }
     }

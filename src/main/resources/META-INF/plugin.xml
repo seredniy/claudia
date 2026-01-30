@@ -20,6 +20,12 @@
 </ul>]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.5</h3>
+        <ul>
+            <li><b>Windows support</b> — fixed path handling for Windows in Session Browser</li>
+            <li><b>Auto-retry</b> — usage widget now automatically retries when credentials expire (30s → 1m → 2m → 5m backoff)</li>
+            <li><b>Refresh fix</b> — manual refresh now properly re-initializes credentials</li>
+        </ul>
         <h3>1.0.4</h3>
         <ul>
             <li><b>OAuth API</b> — switched to official Claude OAuth API for usage tracking</li>
