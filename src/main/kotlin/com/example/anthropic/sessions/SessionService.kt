@@ -106,9 +106,33 @@ class SessionService(private val project: Project) : Disposable {
     /**
      * Encode project path to directory name as Claude Code does.
      * /Users/smidl/Desktop/ccup -> -Users-smidl-Desktop-ccup
+     * E:\laragon\www\wpforms -> E-laragon-www-wpforms (Windows)
      */
     private fun encodeProjectPath(projectPath: String): String {
-        return projectPath.replace("/", "-")
+        return projectPath
+            .replace("\\", "-")  // Windows backslashes
+            .replace("/", "-")   // Unix forward slashes
+            .replace(":", "")    // Remove Windows drive letter colon
+    }
+
+    /**
+     * Decode encoded project path back to display format.
+     * -Users-smidl-Desktop-ccup -> /Users/smidl/Desktop/ccup
+     * E-laragon-www-wpforms -> E:\laragon\www\wpforms (Windows)
+     */
+    private fun decodeProjectPath(encodedName: String): String {
+        val parts = encodedName.split("-").filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return encodedName
+
+        // Check if first part looks like a Windows drive letter (single letter).
+        val firstPart = parts.first()
+        return if (firstPart.length == 1 && firstPart[0].isLetter()) {
+            // Windows path: E-laragon-www -> E:\laragon\www
+            "${firstPart}:\\${parts.drop(1).joinToString("\\")}"
+        } else {
+            // Unix path: -Users-smidl -> /Users/smidl
+            "/${parts.joinToString("/")}"
+        }
     }
 
     /**
@@ -172,7 +196,7 @@ class SessionService(private val project: Project) : Disposable {
                 .filter { Files.exists(it.resolve("sessions-index.json")) }
                 .map { dir ->
                     val name = dir.fileName.toString()
-                    val decodedPath = name.replace("-", "/")
+                    val decodedPath = decodeProjectPath(name)
                     ClaudeProjectInfo(
                         directoryPath = dir.toString(),
                         encodedName = name,
