@@ -204,6 +204,7 @@ class SessionBrowserPanel(private val project: Project) {
     private fun createToolbar(): ActionToolbar {
         val group = DefaultActionGroup().apply {
             add(object : AnAction("New Session", "Start a new Claude Code session", AllIcons.General.Add) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) {
                     service.newSession()
                 }
@@ -211,6 +212,7 @@ class SessionBrowserPanel(private val project: Project) {
             add(createBranchFilterAction())
             add(createDirectoryPickerAction())
             add(object : AnAction("Refresh", "Reload sessions", AllIcons.Actions.Refresh) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) {
                     service.refresh()
                     val sessionCount = listModel.elements().toList()
@@ -241,6 +243,7 @@ class SessionBrowserPanel(private val project: Project) {
                         "Current Project"
                     }
                     add(object : AnAction(currentProjectLabel, "Use current project's sessions", null) {
+                        override fun getActionUpdateThread() = ActionUpdateThread.EDT
                         override fun actionPerformed(e: AnActionEvent) {
                             service.setSessionsDirectory(null)
                             showStatus("Switched to current project")
@@ -258,6 +261,7 @@ class SessionBrowserPanel(private val project: Project) {
                                 projectInfo.decodedPath
                             }
                             add(object : AnAction(label, projectInfo.directoryPath, null) {
+                                override fun getActionUpdateThread() = ActionUpdateThread.EDT
                                 override fun actionPerformed(e: AnActionEvent) {
                                     service.setSessionsDirectory(projectInfo.directoryPath)
                                     showStatus("Switched to ${projectInfo.decodedPath}")
@@ -278,6 +282,7 @@ class SessionBrowserPanel(private val project: Project) {
                             val isSelected = settings.customSessionsDirectory == dir
                             val label = if (isSelected) "$name  ✓" else name
                             add(object : AnAction(label, dir, null) {
+                                override fun getActionUpdateThread() = ActionUpdateThread.EDT
                                 override fun actionPerformed(e: AnActionEvent) {
                                     service.setSessionsDirectory(dir)
                                     showStatus("Switched to $name")
@@ -290,6 +295,7 @@ class SessionBrowserPanel(private val project: Project) {
 
                     // Browse action.
                     add(object : AnAction("Browse...", "Select custom directory", AllIcons.Actions.MenuOpen) {
+                        override fun getActionUpdateThread() = ActionUpdateThread.EDT
                         override fun actionPerformed(e: AnActionEvent) {
                             val descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor()
                             descriptor.title = "Select Claude Sessions Directory"
@@ -344,6 +350,7 @@ class SessionBrowserPanel(private val project: Project) {
                 val popupGroup = DefaultActionGroup().apply {
                     // "All branches" option.
                     add(object : AnAction(if (selectedBranch == null) "All branches  ✓" else "All branches") {
+                        override fun getActionUpdateThread() = ActionUpdateThread.EDT
                         override fun actionPerformed(e: AnActionEvent) {
                             selectedBranch = null
                             filterSessions()
@@ -356,6 +363,7 @@ class SessionBrowserPanel(private val project: Project) {
                     for (branch in branches) {
                         val label = if (branch == selectedBranch) "$branch  ✓" else branch
                         add(object : AnAction(label) {
+                            override fun getActionUpdateThread() = ActionUpdateThread.EDT
                             override fun actionPerformed(e: AnActionEvent) {
                                 selectedBranch = branch
                                 filterSessions()
@@ -385,6 +393,7 @@ class SessionBrowserPanel(private val project: Project) {
     private fun createContextMenuGroup(): ActionGroup {
         return DefaultActionGroup().apply {
             add(object : AnAction("Resume Session", "Resume this session in terminal", AllIcons.Actions.Execute) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) {
                     val session = getSelectedSession() ?: return
                     service.resumeSession(session.sessionId)
@@ -394,6 +403,7 @@ class SessionBrowserPanel(private val project: Project) {
             addSeparator()
 
             add(object : AnAction("Fork Session", "Fork this session into a new one", AllIcons.Vcs.Branch) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) {
                     val session = getSelectedSession() ?: return
                     service.forkSession(session.sessionId)
@@ -403,6 +413,7 @@ class SessionBrowserPanel(private val project: Project) {
             addSeparator()
 
             add(object : AnAction("Copy Session ID", "Copy session ID to clipboard", AllIcons.Actions.Copy) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) {
                     val session = getSelectedSession() ?: return
                     val clipboard = Toolkit.getDefaultToolkit().systemClipboard
@@ -413,6 +424,7 @@ class SessionBrowserPanel(private val project: Project) {
             addSeparator()
 
             add(object : AnAction("Delete Session", "Delete this session", AllIcons.General.Remove) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) {
                     val session = getSelectedSession() ?: return
                     val confirm = Messages.showYesNoDialog(
