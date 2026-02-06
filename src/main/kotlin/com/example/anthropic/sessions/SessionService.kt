@@ -2,6 +2,7 @@ package com.example.anthropic.sessions
 
 import com.example.anthropic.sessions.model.SessionEntry
 import com.example.anthropic.sessions.parser.SessionIndexParser
+import com.example.anthropic.sessions.parser.SessionJsonlScanner
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.logger
@@ -24,9 +25,7 @@ import kotlin.io.path.deleteIfExists
 class SessionService(private val project: Project) : Disposable {
     private val log = logger<SessionService>()
     private var cachedSessions: List<SessionEntry> = emptyList()
-    @Volatile
-    private var watcherRunning = true
-    private var currentWatchedPath: Path? = null
+    private var watcherThread: Thread? = null
 
     companion object {
         val SESSIONS_CHANGED_TOPIC = Topic.create(
@@ -55,11 +54,12 @@ class SessionService(private val project: Project) : Disposable {
 
     /**
      * Watch the sessions directory for changes using NIO WatchService.
-     * This detects external file modifications that IntelliJ VFS misses.
+     * Detects new/modified/deleted .jsonl files and sessions-index.json updates.
      */
     private fun startFileWatcher() {
-        val indexPath = getSessionsIndexPath()
-        val dir = indexPath.parent ?: return
+        watcherThread?.interrupt()
+
+        val dir = getSessionsDirectory()
         if (!dir.exists()) {
             try {
                 Files.createDirectories(dir)
@@ -69,7 +69,7 @@ class SessionService(private val project: Project) : Disposable {
             }
         }
 
-        thread(isDaemon = true, name = "claude-sessions-watcher") {
+        watcherThread = thread(isDaemon = true, name = "claude-sessions-watcher") {
             try {
                 val watchService = FileSystems.getDefault().newWatchService()
                 dir.register(
@@ -79,12 +79,12 @@ class SessionService(private val project: Project) : Disposable {
                     StandardWatchEventKinds.ENTRY_DELETE
                 )
 
-                while (watcherRunning) {
+                while (!Thread.currentThread().isInterrupted) {
                     val key = watchService.poll(2, java.util.concurrent.TimeUnit.SECONDS)
                     if (key != null) {
                         val relevant = key.pollEvents().any { event ->
-                            val context = event.context()
-                            context?.toString() == "sessions-index.json"
+                            val context = event.context()?.toString() ?: return@any false
+                            context == "sessions-index.json" || context.endsWith(".jsonl")
                         }
                         key.reset()
                         if (relevant) {
@@ -96,7 +96,7 @@ class SessionService(private val project: Project) : Disposable {
                 }
                 watchService.close()
             } catch (e: InterruptedException) {
-                // Service disposed.
+                // Watcher stopped or restarted.
             } catch (e: Exception) {
                 log.warn("File watcher error: ${e.message}", e)
             }
@@ -185,26 +185,38 @@ class SessionService(private val project: Project) : Disposable {
 
     /**
      * List available Claude project directories.
+     * Includes directories with sessions-index.json or any .jsonl session files.
      */
     fun listAvailableProjects(): List<ClaudeProjectInfo> {
         val projectsDir = getClaudeProjectsDir()
         if (!projectsDir.exists()) return emptyList()
 
         return try {
-            Files.list(projectsDir)
-                .filter { Files.isDirectory(it) }
-                .filter { Files.exists(it.resolve("sessions-index.json")) }
-                .map { dir ->
-                    val name = dir.fileName.toString()
-                    val decodedPath = decodeProjectPath(name)
-                    ClaudeProjectInfo(
-                        directoryPath = dir.toString(),
-                        encodedName = name,
-                        decodedPath = decodedPath
-                    )
-                }
-                .toList()
-                .sortedBy { it.decodedPath }
+            Files.list(projectsDir).use { stream ->
+                stream
+                    .filter { Files.isDirectory(it) }
+                    .filter { dir ->
+                        try {
+                            Files.exists(dir.resolve("sessions-index.json")) ||
+                                Files.list(dir).use { files ->
+                                    files.anyMatch { it.toString().endsWith(".jsonl") }
+                                }
+                        } catch (e: Exception) {
+                            false
+                        }
+                    }
+                    .map { dir ->
+                        val name = dir.fileName.toString()
+                        val decodedPath = decodeProjectPath(name)
+                        ClaudeProjectInfo(
+                            directoryPath = dir.toString(),
+                            encodedName = name,
+                            decodedPath = decodedPath
+                        )
+                    }
+                    .toList()
+                    .sortedBy { it.decodedPath }
+            }
         } catch (e: Exception) {
             log.warn("Failed to list Claude projects: ${e.message}")
             emptyList()
@@ -215,17 +227,33 @@ class SessionService(private val project: Project) : Disposable {
      * Restart file watcher for new directory.
      */
     private fun restartFileWatcher() {
-        // The watcher will pick up the new path on next iteration.
-        // For immediate effect, we could stop and restart the watcher thread.
-        // For now, just refresh and the watcher will adapt.
+        startFileWatcher()
     }
 
     /**
-     * Load sessions from disk.
+     * Load sessions from disk by scanning .jsonl files directly.
+     * Merges with sessions-index.json for summaries when available.
      */
     fun loadSessions(): List<SessionEntry> {
+        val sessionsDir = getSessionsDirectory()
+
+        // Primary: scan .jsonl files directly.
+        val scannedSessions = SessionJsonlScanner.scan(sessionsDir)
+
+        // Secondary: load sessions-index.json for summaries.
         val indexPath = getSessionsIndexPath()
-        cachedSessions = SessionIndexParser.parse(indexPath)
+        val indexMap = SessionIndexParser.parse(indexPath).associateBy { it.sessionId }
+
+        // Merge: enrich scanned sessions with index summaries.
+        cachedSessions = scannedSessions.map { scanned ->
+            val indexed = indexMap[scanned.sessionId]
+            if (indexed?.summary != null) {
+                scanned.copy(summary = indexed.summary)
+            } else {
+                scanned
+            }
+        }
+
         return cachedSessions
     }
 
@@ -361,7 +389,8 @@ class SessionService(private val project: Project) : Disposable {
     }
 
     override fun dispose() {
-        watcherRunning = false
+        watcherThread?.interrupt()
+        watcherThread = null
         log.info("Disposing SessionService")
     }
 }

@@ -20,6 +20,14 @@
 </ul>]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.6</h3>
+        <ul>
+            <li><b>Reliable session discovery</b> — sessions are now scanned directly from .jsonl files instead of relying on sessions-index.json, which could become stale</li>
+            <li><b>New session format support</b> — handles newer Claude Code message format ("type":"message")</li>
+            <li><b>Better session titles</b> — skips internal system messages to find the actual user prompt</li>
+            <li><b>File watcher improvements</b> — detects new .jsonl files, properly restarts on directory change</li>
+            <li><b>Empty session filtering</b> — hides abandoned sessions with no real conversation</li>
+        </ul>
         <h3>1.0.5</h3>
         <ul>
             <li><b>Windows support</b> — fixed path handling for Windows in Session Browser</li>
