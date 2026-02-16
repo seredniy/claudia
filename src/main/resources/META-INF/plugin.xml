@@ -20,6 +20,13 @@
 </ul>]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.7</h3>
+        <ul>
+            <li><b>Feature toggles</b> — disable Session Browser, Usage Bar, or Send to Claude individually from settings</li>
+            <li><b>Dynamic apply</b> — toggling features takes effect immediately without IDE restart</li>
+            <li><b>Usage Bar settings</b> — credential and refresh settings are grayed out when Usage Bar is disabled</li>
+            <li><b>Widget ID fix</b> — status bar widget now correctly responds to right-click show/hide toggle</li>
+        </ul>
         <h3>1.0.6</h3>
         <ul>
             <li><b>Reliable session discovery</b> — sessions are now scanned directly from .jsonl files instead of relying on sessions-index.json, which could become stale</li>
