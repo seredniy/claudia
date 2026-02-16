@@ -74,7 +74,13 @@ class AnthropicUsageService : Disposable {
 
                 // Re-initialize credentials on each retry when in error state.
                 if (isInErrorState) {
-                    initializeApiService()
+                    try {
+                        initializeApiService()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        log.warn("Failed to re-initialize API service", e)
+                    }
                 }
                 fetchAndPublishUsage()
             }
@@ -121,43 +127,53 @@ class AnthropicUsageService : Disposable {
     private suspend fun fetchAndPublishUsage() {
         log.info("Fetching usage data")
 
-        val result = apiService.fetchCurrentUsage()
+        try {
+            val result = apiService.fetchCurrentUsage()
 
-        result.onSuccess { usageData ->
-            log.info("Successfully fetched usage data: 5h=${usageData.fiveHourUtilization}% 7d=${usageData.sevenDayUtilization}%")
+            result.onSuccess { usageData ->
+                log.info("Successfully fetched usage data: 5h=${usageData.fiveHourUtilization}% 7d=${usageData.sevenDayUtilization}%")
 
-            // Clear error state on success.
-            if (isInErrorState) {
-                log.info("Recovered from error state")
-                isInErrorState = false
-                consecutiveErrors = 0
+                // Clear error state on success.
+                if (isInErrorState) {
+                    log.info("Recovered from error state")
+                    isInErrorState = false
+                    consecutiveErrors = 0
+                }
+
+                cache.update(usageData)
+                publishUpdate(usageData)
+
+                // Check if notification needed.
+                if (settings.showNotifications && shouldShowNotification(usageData)) {
+                    showUsageWarning(usageData)
+                }
             }
 
-            cache.update(usageData)
-            publishUpdate(usageData)
-
-            // Check if notification needed.
-            if (settings.showNotifications && shouldShowNotification(usageData)) {
-                showUsageWarning(usageData)
+            result.onFailure { error ->
+                handleFetchError(error)
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFetchError(e)
         }
+    }
 
-        result.onFailure { error ->
-            val errorMessage = when (error) {
-                is ClaudeApiException -> error.getUserMessage()
-                else -> error.message ?: "Unknown error"
-            }
-            log.warn("Failed to fetch usage data: $errorMessage", error)
-
-            // Track error state for retry logic.
-            isInErrorState = true
-            consecutiveErrors++
-            val retryIndex = (consecutiveErrors - 1).coerceIn(0, RETRY_INTERVALS.lastIndex)
-            val nextRetrySeconds = RETRY_INTERVALS[retryIndex]
-            log.info("Error state: will retry in ${nextRetrySeconds}s (attempt $consecutiveErrors)")
-
-            publishError(errorMessage)
+    private fun handleFetchError(error: Throwable) {
+        val errorMessage = when (error) {
+            is ClaudeApiException -> error.getUserMessage()
+            else -> error.message ?: "Unknown error"
         }
+        log.warn("Failed to fetch usage data: $errorMessage", error)
+
+        // Track error state for retry logic.
+        isInErrorState = true
+        consecutiveErrors++
+        val retryIndex = (consecutiveErrors - 1).coerceIn(0, RETRY_INTERVALS.lastIndex)
+        val nextRetrySeconds = RETRY_INTERVALS[retryIndex]
+        log.info("Error state: will retry in ${nextRetrySeconds}s (attempt $consecutiveErrors)")
+
+        publishError(errorMessage)
     }
 
     private fun shouldShowNotification(data: UsageData): Boolean {
