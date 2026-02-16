@@ -11,7 +11,7 @@ import com.intellij.openapi.wm.ToolWindowFactory
  */
 class SessionBrowserToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val panel = SessionBrowserPanel(project)
+        val panel = SessionBrowserPanel(project, toolWindow.disposable)
         val contentFactory = toolWindow.contentManager.factory
         val content = contentFactory.createContent(panel.mainPanel, "", false)
         toolWindow.contentManager.addContent(content)

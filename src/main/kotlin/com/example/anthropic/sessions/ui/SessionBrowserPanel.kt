@@ -9,6 +9,7 @@ import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.example.anthropic.sessions.model.SessionListItem
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
@@ -38,10 +39,10 @@ import javax.swing.event.DocumentListener
 /**
  * Main panel for the Session Browser tool window.
  */
-class SessionBrowserPanel(private val project: Project) {
+class SessionBrowserPanel(private val project: Project, private val parentDisposable: Disposable) {
     val mainPanel: JPanel = JPanel(BorderLayout())
     private val service = SessionService.getInstance(project)
-    private val listModel = DefaultListModel<SessionListItem>()
+    private var listModel = DefaultListModel<SessionListItem>()
     private val sessionList = object : JBList<SessionListItem>(listModel) {
         override fun getToolTipText(event: MouseEvent): String? {
             val index = locationToIndex(event.point)
@@ -472,14 +473,17 @@ class SessionBrowserPanel(private val project: Project) {
             }
         }
 
-        listModel.clear()
+        // Batch update: build new model and swap in one operation to avoid per-element repaint.
+        val newModel = DefaultListModel<SessionListItem>()
         if (filtered.isEmpty()) {
             cardLayout.show(centerPanel, "empty")
         } else {
             val grouped = groupByDate(filtered)
-            grouped.forEach { listModel.addElement(it) }
+            grouped.forEach { newModel.addElement(it) }
             cardLayout.show(centerPanel, "list")
         }
+        listModel = newModel
+        sessionList.model = newModel
     }
 
     /**
@@ -577,7 +581,7 @@ class SessionBrowserPanel(private val project: Project) {
     }
 
     private fun subscribeToChanges() {
-        project.messageBus.connect()
+        project.messageBus.connect(parentDisposable)
             .subscribe(SessionService.SESSIONS_CHANGED_TOPIC,
                 object : SessionsChangedListener {
                     override fun onSessionsChanged() {

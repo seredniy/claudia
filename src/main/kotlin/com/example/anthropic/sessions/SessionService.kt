@@ -4,6 +4,7 @@ import com.example.anthropic.sessions.model.SessionEntry
 import com.example.anthropic.sessions.parser.SessionIndexParser
 import com.example.anthropic.sessions.parser.SessionJsonlScanner
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
@@ -16,16 +17,22 @@ import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardWatchEventKinds
+import java.nio.file.attribute.FileTime
+import java.util.concurrent.ConcurrentHashMap
 import javax.swing.SwingUtilities
 import kotlin.concurrent.thread
 import kotlin.io.path.exists
+import kotlin.io.path.extension
+import kotlin.io.path.nameWithoutExtension
 import kotlin.io.path.deleteIfExists
 
 @Service(Service.Level.PROJECT)
 class SessionService(private val project: Project) : Disposable {
     private val log = logger<SessionService>()
+    @Volatile
     private var cachedSessions: List<SessionEntry> = emptyList()
     private var watcherThread: Thread? = null
+    private val sessionFileCache = ConcurrentHashMap<String, Pair<FileTime, SessionEntry>>()
 
     companion object {
         val SESSIONS_CHANGED_TOPIC = Topic.create(
@@ -50,6 +57,7 @@ class SessionService(private val project: Project) : Disposable {
 
     init {
         startFileWatcher()
+        refresh()
     }
 
     /**
@@ -90,7 +98,7 @@ class SessionService(private val project: Project) : Disposable {
                         if (relevant) {
                             // Small delay to let the file finish writing.
                             Thread.sleep(200)
-                            SwingUtilities.invokeLater { refresh() }
+                            refresh()
                         }
                     }
                 }
@@ -179,6 +187,7 @@ class SessionService(private val project: Project) : Disposable {
         if (path != null) {
             settings.addRecentDirectory(path)
         }
+        sessionFileCache.clear()
         restartFileWatcher()
         refresh()
     }
@@ -231,21 +240,60 @@ class SessionService(private val project: Project) : Disposable {
     }
 
     /**
-     * Load sessions from disk by scanning .jsonl files directly.
-     * Merges with sessions-index.json for summaries when available.
+     * Load sessions from disk with incremental caching.
+     * Only re-parses .jsonl files whose modification time has changed.
+     * Must be called from a background thread.
      */
-    fun loadSessions(): List<SessionEntry> {
+    private fun loadSessions(): List<SessionEntry> {
         val sessionsDir = getSessionsDirectory()
+        if (!sessionsDir.exists()) return emptyList()
 
-        // Primary: scan .jsonl files directly.
-        val scannedSessions = SessionJsonlScanner.scan(sessionsDir)
+        // List current .jsonl files.
+        val currentFiles = try {
+            Files.list(sessionsDir).use { stream ->
+                stream.filter { Files.isRegularFile(it) && it.extension == "jsonl" }
+                    .toList()
+            }
+        } catch (e: Exception) {
+            log.warn("Failed to list sessions directory: ${e.message}")
+            return emptyList()
+        }
 
-        // Secondary: load sessions-index.json for summaries.
+        // Incremental cache: remove deleted, only re-parse changed files.
+        val currentIds = currentFiles.associateBy { it.nameWithoutExtension }
+        sessionFileCache.keys.retainAll(currentIds.keys)
+
+        for ((id, file) in currentIds) {
+            try {
+                val mtime = Files.getLastModifiedTime(file)
+                val cached = sessionFileCache[id]
+                if (cached == null || cached.first != mtime) {
+                    val entry = SessionJsonlScanner.parseSessionFile(file)
+                    if (entry != null) {
+                        sessionFileCache[id] = mtime to entry
+                    } else {
+                        sessionFileCache.remove(id)
+                    }
+                }
+            } catch (e: Exception) {
+                log.warn("Failed to check session file $file: ${e.message}")
+            }
+        }
+
+        val scannedSessions = sessionFileCache.values
+            .map { it.second }
+            .filter { !it.isSidechain && it.messageCount > 0 && it.firstPrompt != null }
+            .sortedByDescending { it.modified }
+
+        // Enrich with summaries from sessions-index.json.
         val indexPath = getSessionsIndexPath()
-        val indexMap = SessionIndexParser.parse(indexPath).associateBy { it.sessionId }
+        val indexMap = try {
+            SessionIndexParser.parse(indexPath).associateBy { it.sessionId }
+        } catch (e: Exception) {
+            emptyMap()
+        }
 
-        // Merge: enrich scanned sessions with index summaries.
-        cachedSessions = scannedSessions.map { scanned ->
+        return scannedSessions.map { scanned ->
             val indexed = indexMap[scanned.sessionId]
             if (indexed?.summary != null) {
                 scanned.copy(summary = indexed.summary)
@@ -253,26 +301,25 @@ class SessionService(private val project: Project) : Disposable {
                 scanned
             }
         }
-
-        return cachedSessions
     }
 
     /**
-     * Get cached sessions or load from disk.
+     * Get cached sessions (never triggers I/O on the calling thread).
      */
-    fun getSessions(): List<SessionEntry> {
-        if (cachedSessions.isEmpty()) {
-            cachedSessions = loadSessions()
-        }
-        return cachedSessions
-    }
+    fun getSessions(): List<SessionEntry> = cachedSessions
 
     /**
      * Refresh sessions from disk and notify listeners.
+     * Runs I/O on a background thread, then updates UI on EDT.
      */
     fun refresh() {
-        cachedSessions = loadSessions()
-        project.messageBus.syncPublisher(SESSIONS_CHANGED_TOPIC).onSessionsChanged()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val sessions = loadSessions()
+            ApplicationManager.getApplication().invokeLater {
+                cachedSessions = sessions
+                project.messageBus.syncPublisher(SESSIONS_CHANGED_TOPIC).onSessionsChanged()
+            }
+        }
     }
 
     /**
@@ -298,23 +345,25 @@ class SessionService(private val project: Project) : Disposable {
 
     /**
      * Delete a session: remove the .jsonl file, update sessions-index.json, and refresh.
+     * Runs all I/O on a background thread.
      */
-    fun deleteSession(session: SessionEntry): Boolean {
-        return try {
-            // Delete the .jsonl conversation file.
-            val fullPath = session.fullPath
-            if (fullPath != null) {
-                Path.of(fullPath).deleteIfExists()
+    fun deleteSession(session: SessionEntry) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val fullPath = session.fullPath
+                if (fullPath != null) {
+                    Path.of(fullPath).deleteIfExists()
+                }
+                removeFromIndex(session.sessionId)
+                sessionFileCache.remove(session.sessionId)
+                val sessions = loadSessions()
+                ApplicationManager.getApplication().invokeLater {
+                    cachedSessions = sessions
+                    project.messageBus.syncPublisher(SESSIONS_CHANGED_TOPIC).onSessionsChanged()
+                }
+            } catch (e: Exception) {
+                log.warn("Failed to delete session ${session.sessionId}: ${e.message}", e)
             }
-
-            // Remove entry from sessions-index.json.
-            removeFromIndex(session.sessionId)
-
-            refresh()
-            true
-        } catch (e: Exception) {
-            log.warn("Failed to delete session ${session.sessionId}: ${e.message}", e)
-            false
         }
     }
 
@@ -391,6 +440,7 @@ class SessionService(private val project: Project) : Disposable {
     override fun dispose() {
         watcherThread?.interrupt()
         watcherThread = null
+        sessionFileCache.clear()
         log.info("Disposing SessionService")
     }
 }

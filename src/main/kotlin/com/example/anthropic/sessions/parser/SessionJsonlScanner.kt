@@ -45,7 +45,7 @@ object SessionJsonlScanner {
         }
     }
 
-    private fun parseSessionFile(file: Path): SessionEntry? {
+    internal fun parseSessionFile(file: Path): SessionEntry? {
         val sessionId = file.nameWithoutExtension
 
         try {
@@ -57,25 +57,28 @@ object SessionJsonlScanner {
 
             BufferedReader(InputStreamReader(Files.newInputStream(file), Charsets.UTF_8)).use { reader ->
                 reader.lineSequence().forEach { line ->
+                    if ("\"type\"" !in line) return@forEach
                     val typeMatch = typeRegex.find(line) ?: return@forEach
                     val type = typeMatch.groupValues[1]
 
                     when (type) {
                         "user" -> {
                             messageCount++
-                            try {
-                                val parsed = gson.fromJson(line, JsonObject::class.java)
-                                if (firstUserMessage == null) {
-                                    firstUserMessage = parsed
-                                }
-                                // Keep looking for a user message with actual text content.
-                                if (firstPrompt == null) {
-                                    val text = extractPromptText(parsed.getAsJsonObject("message"))
-                                    if (!text.isNullOrBlank()) {
-                                        firstPrompt = text
+                            // Only parse JSON while we still need metadata from user messages.
+                            if (firstUserMessage == null || firstPrompt == null) {
+                                try {
+                                    val parsed = gson.fromJson(line, JsonObject::class.java)
+                                    if (firstUserMessage == null) {
+                                        firstUserMessage = parsed
                                     }
-                                }
-                            } catch (_: Exception) { }
+                                    if (firstPrompt == null) {
+                                        val text = extractPromptText(parsed.getAsJsonObject("message"))
+                                        if (!text.isNullOrBlank()) {
+                                            firstPrompt = text
+                                        }
+                                    }
+                                } catch (_: Exception) { }
+                            }
                         }
                         "assistant", "message" -> messageCount++
                         "file-history-snapshot" -> {
