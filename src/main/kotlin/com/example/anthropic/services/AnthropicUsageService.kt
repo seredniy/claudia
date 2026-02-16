@@ -252,7 +252,9 @@ class AnthropicUsageService : Disposable {
     class ProjectListener : ProjectManagerListener {
         @Suppress("DEPRECATION")
         override fun projectOpened(project: Project) {
-            service<AnthropicUsageService>().startTracking()
+            if (service<AnthropicSettingsState>().enableUsageBar) {
+                service<AnthropicUsageService>().startTracking()
+            }
         }
     }
 }

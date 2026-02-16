@@ -1,6 +1,8 @@
 package com.example.anthropic.actions
 
+import com.example.anthropic.settings.AnthropicSettingsState
 import com.intellij.ide.projectView.ProjectView
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -128,7 +130,10 @@ class SendToClaudeAction : AnAction() {
         }
     }
 
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabledAndVisible = true
+        val settings = com.intellij.openapi.components.service<AnthropicSettingsState>()
+        e.presentation.isEnabledAndVisible = settings.enableSendToClaude
     }
 }

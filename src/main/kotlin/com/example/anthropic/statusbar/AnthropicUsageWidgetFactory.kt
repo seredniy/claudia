@@ -10,12 +10,14 @@ import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
 
 class AnthropicUsageWidgetFactory : StatusBarWidgetFactory {
-    override fun getId() = "com.example.anthropic.statusbar.widget"
+    override fun getId() = "com.sercraft.claudia.statusbar.widget"
 
     override fun getDisplayName() = "Claude Usage"
 
     override fun isAvailable(project: Project): Boolean {
         val settings = service<AnthropicSettingsState>()
+
+        if (!settings.enableUsageBar) return false
 
         return if (settings.useManualToken) {
             settings.hasAccessToken()

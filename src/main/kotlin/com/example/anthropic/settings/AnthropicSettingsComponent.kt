@@ -20,6 +20,11 @@ import javax.swing.*
 class AnthropicSettingsComponent {
     val panel: JPanel
 
+    // Feature toggles.
+    private val enableSessionBrowserCheckbox = JBCheckBox("Session Browser")
+    private val enableUsageBarCheckbox = JBCheckBox("Usage Bar")
+    private val enableSendToClaudeCheckbox = JBCheckBox("Send to Claude Code")
+
     // Credentials.
     private val useManualTokenCheckbox = JBCheckBox("Use manual access token")
     private val accessTokenField = JBPasswordField()
@@ -33,12 +38,20 @@ class AnthropicSettingsComponent {
     private val testConnectionButton = JButton("Test Connection")
     private val statusLabel = JBLabel()
 
+    // All controls in the "Usage Bar Settings" section that should be disabled when the toggle is off.
+    private val usageBarSettingsControls = mutableListOf<JComponent>()
+
     private val credentialDiscovery = ClaudeCredentialDiscovery()
 
     init {
         // Set default values.
         refreshIntervalField.text = "5"
         notifyAtPercentageField.text = "90"
+
+        // Feature toggles default to checked.
+        enableSessionBrowserCheckbox.isSelected = true
+        enableUsageBarCheckbox.isSelected = true
+        enableSendToClaudeCheckbox.isSelected = true
 
         // Access token field enabled state depends on checkbox.
         accessTokenField.isEnabled = false
@@ -54,8 +67,30 @@ class AnthropicSettingsComponent {
             checkOAuthCredentials()
         }
 
+        // Usage Bar toggle controls the enabled state of the settings section.
+        enableUsageBarCheckbox.addActionListener {
+            updateUsageBarSettingsState()
+        }
+
+        // Collect all controls that belong to the Usage Bar Settings section.
+        usageBarSettingsControls.addAll(listOf(
+            useManualTokenCheckbox, accessTokenField, autoDiscoveryStatusLabel,
+            checkCredentialsButton, refreshIntervalField, showNotificationsCheckbox,
+            notifyAtPercentageField, testConnectionButton
+        ))
+
         // Build the form.
         panel = FormBuilder.createFormBuilder()
+            .addComponent(JBLabel("<html><b>Features</b></html>"))
+            .addVerticalGap(5)
+            .addComponent(enableSessionBrowserCheckbox)
+            .addComponent(enableUsageBarCheckbox)
+            .addComponent(enableSendToClaudeCheckbox)
+            .addVerticalGap(15)
+            .addSeparator()
+            .addVerticalGap(10)
+            .addComponent(JBLabel("<html><b>Usage Bar Settings</b></html>"))
+            .addVerticalGap(5)
             .addComponent(JBLabel("<html><b>Credentials</b></html>"))
             .addVerticalGap(5)
             .addComponent(createAutoDiscoveryPanel())
@@ -87,6 +122,18 @@ class AnthropicSettingsComponent {
 
         // Check credentials on init.
         checkOAuthCredentials()
+    }
+
+    private fun updateUsageBarSettingsState() {
+        val enabled = enableUsageBarCheckbox.isSelected
+        for (control in usageBarSettingsControls) {
+            control.isEnabled = enabled
+        }
+        // Respect the manual-token sub-toggle when re-enabling.
+        if (enabled) {
+            accessTokenField.isEnabled = useManualTokenCheckbox.isSelected
+            checkCredentialsButton.isEnabled = !useManualTokenCheckbox.isSelected
+        }
     }
 
     private fun createAutoDiscoveryPanel(): JPanel {
@@ -149,6 +196,26 @@ class AnthropicSettingsComponent {
         instructionsPanel.border = JBUI.Borders.empty(10)
         return instructionsPanel
     }
+
+    // Feature toggle accessors.
+    var enableSessionBrowser: Boolean
+        get() = enableSessionBrowserCheckbox.isSelected
+        set(value) {
+            enableSessionBrowserCheckbox.isSelected = value
+        }
+
+    var enableUsageBar: Boolean
+        get() = enableUsageBarCheckbox.isSelected
+        set(value) {
+            enableUsageBarCheckbox.isSelected = value
+            updateUsageBarSettingsState()
+        }
+
+    var enableSendToClaude: Boolean
+        get() = enableSendToClaudeCheckbox.isSelected
+        set(value) {
+            enableSendToClaudeCheckbox.isSelected = value
+        }
 
     // Property accessors.
     var useManualToken: Boolean

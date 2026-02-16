@@ -39,7 +39,7 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
         }
     }
 
-    override fun ID() = "com.example.anthropic.statusbar.widget"
+    override fun ID() = "com.sercraft.claudia.statusbar.widget"
 
     override fun getComponent(): JComponent = panel
 

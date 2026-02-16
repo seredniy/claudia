@@ -18,6 +18,9 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
     private var myState = State()
 
     data class State(
+        var enableSessionBrowser: Boolean = true,
+        var enableUsageBar: Boolean = true,
+        var enableSendToClaude: Boolean = true,
         var refreshIntervalMinutes: Int = 5,
         var showNotifications: Boolean = true,
         var notifyAtPercentage: Int = 90,
@@ -38,6 +41,25 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
     override fun loadState(state: State) {
         myState = state
     }
+
+    // Convenience accessors — feature toggles.
+    var enableSessionBrowser: Boolean
+        get() = myState.enableSessionBrowser
+        set(value) {
+            myState.enableSessionBrowser = value
+        }
+
+    var enableUsageBar: Boolean
+        get() = myState.enableUsageBar
+        set(value) {
+            myState.enableUsageBar = value
+        }
+
+    var enableSendToClaude: Boolean
+        get() = myState.enableSendToClaude
+        set(value) {
+            myState.enableSendToClaude = value
+        }
 
     // Convenience accessors.
     var refreshIntervalMinutes: Int

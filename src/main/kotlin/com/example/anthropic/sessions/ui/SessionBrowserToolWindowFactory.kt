@@ -1,5 +1,7 @@
 package com.example.anthropic.sessions.ui
 
+import com.example.anthropic.settings.AnthropicSettingsState
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
@@ -10,6 +12,10 @@ import com.intellij.openapi.wm.ToolWindowFactory
  * Appears as an icon on the right IDE sidebar stripe.
  */
 class SessionBrowserToolWindowFactory : ToolWindowFactory, DumbAware {
+    override fun shouldBeAvailable(project: Project): Boolean {
+        return service<AnthropicSettingsState>().enableSessionBrowser
+    }
+
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val panel = SessionBrowserPanel(project, toolWindow.disposable)
         val contentFactory = toolWindow.contentManager.factory
