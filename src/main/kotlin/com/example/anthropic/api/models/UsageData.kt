@@ -3,6 +3,7 @@ package com.example.anthropic.api.models
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 /**
  * Usage data for personal claude.ai account
@@ -20,22 +21,22 @@ data class UsageData(
         get() = maxOf(fiveHourUtilization, sevenDayUtilization)
 
     val formattedLastUpdate: String
-        get() = DateTimeFormatter.ofPattern("MMM dd, HH:mm:ss")
+        get() = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.MEDIUM)
             .withZone(ZoneId.systemDefault())
             .format(lastUpdated)
 
     val formattedFiveHourResetsAt: String?
         get() = fiveHourResetsAt?.let {
-            DateTimeFormatter.ofPattern("HH:mm:ss")
+            DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
                 .withZone(ZoneId.systemDefault())
                 .format(it)
         }
 
     val formattedSevenDayResetsAt: String?
         get() = sevenDayResetsAt?.let {
-            DateTimeFormatter.ofPattern("MMM dd, HH:mm")
-                .withZone(ZoneId.systemDefault())
-                .format(it)
+            val day = DateTimeFormatter.ofPattern("EEE").withZone(ZoneId.systemDefault()).format(it)
+            val time = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withZone(ZoneId.systemDefault()).format(it)
+            "$day $time"
         }
 
     // Compact time remaining format: "2h 15m" or "45m" or "5m"

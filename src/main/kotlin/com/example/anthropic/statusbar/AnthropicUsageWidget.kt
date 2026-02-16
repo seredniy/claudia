@@ -175,31 +175,68 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
     }
 
     private fun buildTooltip(data: UsageData): String {
-        val breakdown = if (data.breakdown.isNotEmpty()) {
-            val modelBreakdown = data.breakdown.entries.joinToString("<br/>") { (model, usage) ->
-                "&nbsp;&nbsp;- $model: ${String.format("%.1f", usage.utilization)}%"
+        val isDark = UIUtil.isUnderDarcula()
+        val barBg = if (isDark) "#555555" else "#cccccc"
+
+        fun barColor(pct: Double): String = when {
+            pct >= 90 -> if (isDark) "#b42828" else "#c83232"
+            pct >= 75 -> if (isDark) "#c88200" else "#ffa500"
+            else -> if (isDark) "#50aa50" else "#329632"
+        }
+
+        fun progressBar(pct: Double, suffix: String? = null): String {
+            val clamped = pct.coerceIn(0.0, 100.0)
+            val filled = clamped.toInt()
+            val remaining = 100 - filled
+            val color = barColor(clamped)
+            val pctLabel = String.format("%.1f%%", clamped) + (suffix?.let { " &middot; $it" } ?: "")
+            val filledTextColor = if (isDark) "#eeeeee" else "#ffffff"
+            val bgTextColor = if (isDark) "#dddddd" else "#333333"
+            val cells = if (filled >= 50) {
+                """<td width="$filled%" bgcolor="$color" height="16" align="center"><font size="2" color="$filledTextColor">$pctLabel</font></td>
+                   <td width="$remaining%" bgcolor="$barBg" height="16"></td>"""
+            } else {
+                """<td width="$filled%" bgcolor="$color" height="16"></td>
+                   <td width="$remaining%" bgcolor="$barBg" height="16" align="center"><font size="2" color="$bgTextColor">$pctLabel</font></td>"""
             }
-            "<br/><b>By Model:</b><br/>$modelBreakdown"
+            return """<table width="250" cellpadding="0" cellspacing="0" style="margin:2px 0">
+                <tr>$cells</tr>
+            </table>"""
+        }
+
+        val sevenDayResetInfo = data.formattedSevenDayResetsAt?.let { "Resets $it" } ?: ""
+
+        val breakdownHtml = if (data.breakdown.isNotEmpty()) {
+            "<br/><br/>" + data.breakdown.entries.joinToString("") { (model, usage) ->
+                """<b>$model</b>
+                ${progressBar(usage.utilization)}"""
+            }
         } else {
             ""
         }
 
+        val minutesAgo = java.time.Duration.between(data.lastUpdated, java.time.Instant.now()).toMinutes()
+        val updatedText = when {
+            minutesAgo > 60 -> "Data may be stale"
+            minutesAgo < 2 -> "Updated just now"
+            else -> "Updated ${minutesAgo}m ago"
+        }
+
         return """
             <html>
-            <b>Claude Usage</b><br/>
+            <body>
+            <b>Claude Usage</b>
+            <br/><br/>
+            <b>5-Hour Limit</b>
+            ${progressBar(data.fiveHourUtilization, data.fiveHourTimeRemaining)}
             <br/>
-            <b>5-Hour Limit:</b> ${String.format("%.1f", data.fiveHourUtilization)}%<br/>
-            ${data.formattedFiveHourResetsAt?.let { "&nbsp;&nbsp;Resets at: $it<br/>" } ?: ""}
-            ${data.fiveHourTimeRemaining?.let { "&nbsp;&nbsp;Time remaining: $it<br/>" } ?: ""}
+            <b>7-Day Limit</b>
+            ${progressBar(data.sevenDayUtilization)}
+            ${if (sevenDayResetInfo.isNotEmpty()) "<span style='font-size:small'>$sevenDayResetInfo</span>" else ""}
+            $breakdownHtml
             <br/>
-            <b>7-Day Limit:</b> ${String.format("%.1f", data.sevenDayUtilization)}%<br/>
-            ${data.formattedSevenDayResetsAt?.let { "&nbsp;&nbsp;Resets at: $it<br/>" } ?: ""}
-            <br/>
-            <i>Last Updated: ${data.formattedLastUpdate}</i>
-            $breakdown
-            <br/>
-            <br/>
-            <i>Left-click: Settings | Right-click: Options</i>
+            <span style='font-size:small; color:gray'>$updatedText</span>
+            </body>
             </html>
         """.trimIndent()
     }
