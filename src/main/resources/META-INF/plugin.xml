@@ -26,6 +26,7 @@
             <li><b>Dynamic apply</b> — toggling features takes effect immediately without IDE restart</li>
             <li><b>Usage Bar settings</b> — credential and refresh settings are grayed out when Usage Bar is disabled</li>
             <li><b>Widget ID fix</b> — status bar widget now correctly responds to right-click show/hide toggle</li>
+            <li><b>Session Browser performance</b> — file I/O moved off EDT, incremental caching for faster load on large session lists</li>
         </ul>
         <h3>1.0.6</h3>
         <ul>
