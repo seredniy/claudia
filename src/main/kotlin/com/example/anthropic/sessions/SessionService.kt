@@ -332,15 +332,15 @@ class SessionService(private val project: Project) : Disposable {
     /**
      * Resume a session in the IDE terminal.
      */
-    fun resumeSession(sessionId: String) {
-        executeInTerminal("claude --resume $sessionId")
+    fun resumeSession(sessionId: String, projectPath: String? = null) {
+        executeInTerminal("claude --resume $sessionId", projectPath)
     }
 
     /**
      * Fork a session in the IDE terminal.
      */
-    fun forkSession(sessionId: String) {
-        executeInTerminal("claude --resume $sessionId --fork-session")
+    fun forkSession(sessionId: String, projectPath: String? = null) {
+        executeInTerminal("claude --resume $sessionId --fork-session", projectPath)
     }
 
     /**
@@ -391,7 +391,7 @@ class SessionService(private val project: Project) : Disposable {
         }
     }
 
-    private fun executeInTerminal(command: String) {
+    private fun executeInTerminal(command: String, workingDirectory: String? = null) {
         val toolWindowManager = ToolWindowManager.getInstance(project)
         val terminalWindow = toolWindowManager.getToolWindow(
             TerminalToolWindowFactory.TOOL_WINDOW_ID
@@ -401,8 +401,9 @@ class SessionService(private val project: Project) : Disposable {
             SwingUtilities.invokeLater {
                 try {
                     val terminalManager = TerminalToolWindowManager.getInstance(project)
+                    val cwd = workingDirectory ?: project.basePath
                     val widget = terminalManager.createLocalShellWidget(
-                        project.basePath, "Claude Session"
+                        cwd, "Claude Session"
                     )
                     if (widget != null) {
                         waitAndSendCommand(widget, command, 0)
@@ -426,7 +427,7 @@ class SessionService(private val project: Project) : Disposable {
 
         val starter = widget.terminalStarter
         if (starter != null) {
-            starter.sendString("$command\n", false)
+            starter.sendString("env -u CLAUDECODE $command\n", false)
         } else {
             // Shell not ready yet, retry after a short delay.
             val timer = javax.swing.Timer(250) {

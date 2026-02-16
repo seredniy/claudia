@@ -27,6 +27,9 @@
             <li><b>Usage Bar settings</b> — credential and refresh settings are grayed out when Usage Bar is disabled</li>
             <li><b>Widget ID fix</b> — status bar widget now correctly responds to right-click show/hide toggle</li>
             <li><b>Session Browser performance</b> — file I/O moved off EDT, incremental caching for faster load on large session lists</li>
+            <li><b>Cross-project resume &amp; fork</b> — sessions from other directories now open in the correct working directory</li>
+            <li><b>Nested session fix</b> — resume/fork no longer fails when launched from a Claude Code terminal</li>
+            <li><b>Settings UX overhaul</b> — restructured settings panel with clearer grouping and feature controls</li>
         </ul>
         <h3>1.0.6</h3>
         <ul>

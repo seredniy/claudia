@@ -137,7 +137,7 @@ class SessionBrowserPanel(private val project: Project, private val parentDispos
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount == 2) {
                     val session = getSelectedSession() ?: return
-                    service.resumeSession(session.sessionId)
+                    service.resumeSession(session.sessionId, session.projectPath)
                 }
             }
         })
@@ -164,7 +164,7 @@ class SessionBrowserPanel(private val project: Project, private val parentDispos
         sessionList.actionMap.put("resumeSession", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent?) {
                 val session = getSelectedSession() ?: return
-                service.resumeSession(session.sessionId)
+                service.resumeSession(session.sessionId, session.projectPath)
             }
         })
 
@@ -404,7 +404,7 @@ class SessionBrowserPanel(private val project: Project, private val parentDispos
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) {
                     val session = getSelectedSession() ?: return
-                    service.resumeSession(session.sessionId)
+                    service.resumeSession(session.sessionId, session.projectPath)
                 }
             })
 
@@ -414,7 +414,7 @@ class SessionBrowserPanel(private val project: Project, private val parentDispos
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) {
                     val session = getSelectedSession() ?: return
-                    service.forkSession(session.sessionId)
+                    service.forkSession(session.sessionId, session.projectPath)
                 }
             })
 
