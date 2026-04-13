@@ -427,7 +427,7 @@ class SessionService(private val project: Project) : Disposable {
 
         val starter = widget.terminalStarter
         if (starter != null) {
-            starter.sendString("env -u CLAUDECODE $command\n", false)
+            starter.sendString("${unsetClaudecodePrefix()}$command\n", false)
         } else {
             // Shell not ready yet, retry after a short delay.
             val timer = javax.swing.Timer(250) {
@@ -435,6 +435,45 @@ class SessionService(private val project: Project) : Disposable {
             }
             timer.isRepeats = false
             timer.start()
+        }
+    }
+
+    /**
+     * Build a shell-appropriate prefix that clears the inherited CLAUDECODE env var
+     * before running the resume/fork command. Needed so `claude` does not treat the
+     * new terminal as a nested Claude Code session when the IDE itself was launched
+     * from a Claude Code terminal.
+     *
+     * Syntax differs per shell:
+     *   - PowerShell/pwsh → `Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue; `
+     *   - cmd.exe         → `set "CLAUDECODE=" && `
+     *   - bash/zsh/sh     → `env -u CLAUDECODE ` (also correct for Git Bash / WSL)
+     *
+     * We detect the shell via the user's configured terminal shell path
+     * (Settings → Tools → Terminal → Shell path) rather than the host OS, because
+     * on Windows the active shell can be PowerShell, cmd, or Git Bash.
+     */
+    private fun unsetClaudecodePrefix(): String {
+        val shellPath = try {
+            org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider
+                .getInstance(project).shellPath
+        } catch (_: Throwable) {
+            null
+        }.orEmpty().lowercase()
+
+        val osIsWindows = System.getProperty("os.name").lowercase().contains("win")
+
+        val shellName = shellPath
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .removeSuffix(".exe")
+
+        return when {
+            shellName == "powershell" || shellName == "pwsh" ->
+                "Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue; "
+            shellName == "cmd" || (osIsWindows && shellName.isBlank()) ->
+                "set \"CLAUDECODE=\" && "
+            else -> "env -u CLAUDECODE "
         }
     }
 
