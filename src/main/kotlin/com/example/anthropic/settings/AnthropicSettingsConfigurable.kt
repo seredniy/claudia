@@ -28,6 +28,7 @@ class AnthropicSettingsConfigurable : Configurable {
         return c.enableSessionBrowser != settings.enableSessionBrowser ||
                c.enableUsageBar != settings.enableUsageBar ||
                c.enableSendToClaude != settings.enableSendToClaude ||
+               c.enableMemoryViewer != settings.enableMemoryViewer ||
                c.useManualToken != settings.useManualToken ||
                c.accessToken != settings.getSecureAccessToken() ||
                c.refreshInterval != settings.refreshIntervalMinutes ||
@@ -43,11 +44,13 @@ class AnthropicSettingsConfigurable : Configurable {
         val oldAccessToken = settings.getSecureAccessToken()
         val oldEnableUsageBar = settings.enableUsageBar
         val oldEnableSessionBrowser = settings.enableSessionBrowser
+        val oldEnableMemoryViewer = settings.enableMemoryViewer
 
         // Save feature toggles.
         settings.enableSessionBrowser = c.enableSessionBrowser
         settings.enableUsageBar = c.enableUsageBar
         settings.enableSendToClaude = c.enableSendToClaude
+        settings.enableMemoryViewer = c.enableMemoryViewer
 
         // Save credential settings.
         settings.useManualToken = c.useManualToken
@@ -92,6 +95,15 @@ class AnthropicSettingsConfigurable : Configurable {
                 toolWindow?.isAvailable = c.enableSessionBrowser
             }
         }
+
+        // Update Memory Viewer tool window availability across all open projects.
+        if (oldEnableMemoryViewer != c.enableMemoryViewer) {
+            for (project in ProjectManager.getInstance().openProjects) {
+                val toolWindow = ToolWindowManager.getInstance(project)
+                    .getToolWindow("Claude Memory")
+                toolWindow?.isAvailable = c.enableMemoryViewer
+            }
+        }
     }
 
     override fun reset() {
@@ -100,6 +112,7 @@ class AnthropicSettingsConfigurable : Configurable {
         c.enableSessionBrowser = settings.enableSessionBrowser
         c.enableUsageBar = settings.enableUsageBar
         c.enableSendToClaude = settings.enableSendToClaude
+        c.enableMemoryViewer = settings.enableMemoryViewer
         c.useManualToken = settings.useManualToken
         c.accessToken = settings.getSecureAccessToken()
         c.refreshInterval = settings.refreshIntervalMinutes

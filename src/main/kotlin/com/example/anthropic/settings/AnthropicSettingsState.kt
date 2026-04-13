@@ -21,6 +21,7 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         var enableSessionBrowser: Boolean = true,
         var enableUsageBar: Boolean = true,
         var enableSendToClaude: Boolean = true,
+        var enableMemoryViewer: Boolean = true,
         var refreshIntervalMinutes: Int = 5,
         var showNotifications: Boolean = true,
         var notifyAtPercentage: Int = 90,
@@ -59,6 +60,12 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         get() = myState.enableSendToClaude
         set(value) {
             myState.enableSendToClaude = value
+        }
+
+    var enableMemoryViewer: Boolean
+        get() = myState.enableMemoryViewer
+        set(value) {
+            myState.enableMemoryViewer = value
         }
 
     // Convenience accessors.
