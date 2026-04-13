@@ -24,6 +24,7 @@ class AnthropicSettingsComponent {
     private val enableSessionBrowserCheckbox = JBCheckBox("Session Browser")
     private val enableUsageBarCheckbox = JBCheckBox("Usage Bar")
     private val enableSendToClaudeCheckbox = JBCheckBox("Send to Claude Code")
+    private val enableMemoryViewerCheckbox = JBCheckBox("Memory Viewer")
 
     // Credentials.
     private val useManualTokenCheckbox = JBCheckBox("Use manual access token")
@@ -52,6 +53,7 @@ class AnthropicSettingsComponent {
         enableSessionBrowserCheckbox.isSelected = true
         enableUsageBarCheckbox.isSelected = true
         enableSendToClaudeCheckbox.isSelected = true
+        enableMemoryViewerCheckbox.isSelected = true
 
         // Access token field enabled state depends on checkbox.
         accessTokenField.isEnabled = false
@@ -86,6 +88,7 @@ class AnthropicSettingsComponent {
             .addComponent(enableSessionBrowserCheckbox)
             .addComponent(enableUsageBarCheckbox)
             .addComponent(enableSendToClaudeCheckbox)
+            .addComponent(enableMemoryViewerCheckbox)
             .addVerticalGap(15)
             .addSeparator()
             .addVerticalGap(10)
@@ -215,6 +218,12 @@ class AnthropicSettingsComponent {
         get() = enableSendToClaudeCheckbox.isSelected
         set(value) {
             enableSendToClaudeCheckbox.isSelected = value
+        }
+
+    var enableMemoryViewer: Boolean
+        get() = enableMemoryViewerCheckbox.isSelected
+        set(value) {
+            enableMemoryViewerCheckbox.isSelected = value
         }
 
     // Property accessors.

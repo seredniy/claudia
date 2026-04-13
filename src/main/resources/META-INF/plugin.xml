@@ -137,6 +137,18 @@
                 secondary="false"
                 icon="/icons/claudiaSessions.svg"
                 factoryClass="com.example.anthropic.sessions.ui.SessionBrowserToolWindowFactory"/>
+
+        <!-- Memory Viewer tool window on right sidebar -->
+        <toolWindow
+                id="Claude Memory"
+                anchor="right"
+                secondary="false"
+                icon="/icons/claudiaMemory.svg"
+                factoryClass="com.example.anthropic.memory.MemoryViewerToolWindowFactory"/>
+
+        <!-- Project-level service for memory file discovery -->
+        <projectService
+                serviceImplementation="com.example.anthropic.memory.MemoryService"/>
     </extensions>
 
     <actions>
