@@ -25,7 +25,8 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         var showNotifications: Boolean = true,
         var notifyAtPercentage: Int = 90,
         var useManualToken: Boolean = false,  // false = auto-discovery, true = manual token
-        var displayMode: UsageDisplayMode = UsageDisplayMode.FIVE_HOUR  // Which limit to show in status bar
+        var displayMode: UsageDisplayMode = UsageDisplayMode.FIVE_HOUR,  // Which limit to show in status bar
+        var resetTimeDisplayMode: ResetTimeDisplayMode = ResetTimeDisplayMode.TIME_REMAINING
     )
 
     /**
@@ -34,6 +35,14 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
     enum class UsageDisplayMode {
         FIVE_HOUR,
         SEVEN_DAY
+    }
+
+    /**
+     * Whether to show time remaining or absolute reset clock time in the status bar.
+     */
+    enum class ResetTimeDisplayMode {
+        TIME_REMAINING,
+        RESET_TIME
     }
 
     override fun getState(): State = myState
@@ -90,6 +99,12 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         get() = myState.displayMode
         set(value) {
             myState.displayMode = value
+        }
+
+    var resetTimeDisplayMode: ResetTimeDisplayMode
+        get() = myState.resetTimeDisplayMode
+        set(value) {
+            myState.resetTimeDisplayMode = value
         }
 
     // Secure OAuth access token storage (for manual mode).

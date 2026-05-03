@@ -149,9 +149,14 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
             }
         }
 
-        // Format: "5h: 35% • 2h 15m" or "7d: 12%".
-        val text = if (timeRemaining != null) {
-            "$label: $percentage% • $timeRemaining"
+        // Format: "5h: 35% • 2h 15m" / "5h: 35% • 3:15 PM" / "7d: 12%".
+        val displayTime = if (settings.resetTimeDisplayMode == AnthropicSettingsState.ResetTimeDisplayMode.RESET_TIME) {
+            data.formattedFiveHourResetsAt
+        } else {
+            timeRemaining
+        }
+        val text = if (displayTime != null) {
+            "$label: $percentage% • $displayTime"
         } else {
             "$label: $percentage%"
         }
@@ -204,6 +209,7 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
             </table>"""
         }
 
+        val fiveHourResetInfo = data.formattedFiveHourResetsAt?.let { "Resets $it" } ?: ""
         val sevenDayResetInfo = data.formattedSevenDayResetsAt?.let { "Resets $it" } ?: ""
 
         val breakdownHtml = if (data.breakdown.isNotEmpty()) {
@@ -229,6 +235,7 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
             <br/><br/>
             <b>5-Hour Limit</b>
             ${progressBar(data.fiveHourUtilization, data.fiveHourTimeRemaining)}
+            ${if (fiveHourResetInfo.isNotEmpty()) "<span style='font-size:small'>$fiveHourResetInfo</span>" else ""}
             <br/>
             <b>7-Day Limit</b>
             ${progressBar(data.sevenDayUtilization)}

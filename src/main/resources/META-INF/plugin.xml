@@ -20,6 +20,11 @@
 </ul>]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.9</h3>
+        <ul>
+            <li><b>Reset time display</b> — usage bar can now show the absolute local clock time when the 5-hour limit resets instead of the time remaining; configurable in Settings → Tools → Claudia Settings</li>
+            <li><b>Reset time in tooltip</b> — hovering the usage bar widget now shows the reset time for both the 5-hour and 7-day limits</li>
+        </ul>
         <h3>1.0.8</h3>
         <ul>
             <li><b>Cross-shell session resume/fork</b> — session resume and fork now work in any configured terminal shell. The plugin detects the shell from <i>Settings → Tools → Terminal → Shell path</i> and uses the correct syntax to clear the inherited CLAUDECODE env var: PowerShell/pwsh (<code>Remove-Item Env:CLAUDECODE</code>), cmd.exe (<code>set "CLAUDECODE="</code>), and POSIX shells like bash/zsh/sh/Git Bash (<code>env -u CLAUDECODE</code>). Fixes the "env is not recognized" error on Windows PowerShell and cmd.</li>
