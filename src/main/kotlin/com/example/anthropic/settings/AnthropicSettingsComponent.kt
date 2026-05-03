@@ -38,6 +38,10 @@ class AnthropicSettingsComponent {
     private val testConnectionButton = JButton("Test Connection")
     private val statusLabel = JBLabel()
 
+    // Reset time display mode.
+    private val showTimeRemainingRadio = JRadioButton("Show time remaining (e.g. 2h 15m)")
+    private val showResetTimeRadio = JRadioButton("Show reset time (e.g. 3:15 PM)")
+
     // All controls in the "Usage Bar Settings" section that should be disabled when the toggle is off.
     private val usageBarSettingsControls = mutableListOf<JComponent>()
 
@@ -52,6 +56,12 @@ class AnthropicSettingsComponent {
         enableSessionBrowserCheckbox.isSelected = true
         enableUsageBarCheckbox.isSelected = true
         enableSendToClaudeCheckbox.isSelected = true
+
+        // Group reset time radio buttons.
+        val resetTimeDisplayGroup = ButtonGroup()
+        resetTimeDisplayGroup.add(showTimeRemainingRadio)
+        resetTimeDisplayGroup.add(showResetTimeRadio)
+        showTimeRemainingRadio.isSelected = true
 
         // Access token field enabled state depends on checkbox.
         accessTokenField.isEnabled = false
@@ -76,7 +86,8 @@ class AnthropicSettingsComponent {
         usageBarSettingsControls.addAll(listOf(
             useManualTokenCheckbox, accessTokenField, autoDiscoveryStatusLabel,
             checkCredentialsButton, refreshIntervalField, showNotificationsCheckbox,
-            notifyAtPercentageField, testConnectionButton
+            notifyAtPercentageField, testConnectionButton,
+            showTimeRemainingRadio, showResetTimeRadio
         ))
 
         // Build the form.
@@ -106,6 +117,10 @@ class AnthropicSettingsComponent {
             .addVerticalGap(10)
             .addComponent(showNotificationsCheckbox)
             .addLabeledComponent("Notify at percentage:", notifyAtPercentageField, 1, false)
+            .addVerticalGap(10)
+            .addComponent(JBLabel("Reset time display:"))
+            .addComponent(showTimeRemainingRadio)
+            .addComponent(showResetTimeRadio)
             .addVerticalGap(15)
             .addComponent(createTestConnectionPanel())
             .addVerticalGap(15)
@@ -248,6 +263,18 @@ class AnthropicSettingsComponent {
         get() = notifyAtPercentageField.text.toIntOrNull() ?: 90
         set(value) {
             notifyAtPercentageField.text = value.toString()
+        }
+
+    var resetTimeDisplayMode: AnthropicSettingsState.ResetTimeDisplayMode
+        get() = if (showResetTimeRadio.isSelected)
+                    AnthropicSettingsState.ResetTimeDisplayMode.RESET_TIME
+                else
+                    AnthropicSettingsState.ResetTimeDisplayMode.TIME_REMAINING
+        set(value) {
+            if (value == AnthropicSettingsState.ResetTimeDisplayMode.RESET_TIME)
+                showResetTimeRadio.isSelected = true
+            else
+                showTimeRemainingRadio.isSelected = true
         }
 
     private fun testConnection() {

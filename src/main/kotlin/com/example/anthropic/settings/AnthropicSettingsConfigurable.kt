@@ -32,7 +32,8 @@ class AnthropicSettingsConfigurable : Configurable {
                c.accessToken != settings.getSecureAccessToken() ||
                c.refreshInterval != settings.refreshIntervalMinutes ||
                c.showNotifications != settings.showNotifications ||
-               c.notifyAtPercentage != settings.notifyAtPercentage
+               c.notifyAtPercentage != settings.notifyAtPercentage ||
+               c.resetTimeDisplayMode != settings.resetTimeDisplayMode
     }
 
     override fun apply() {
@@ -57,6 +58,7 @@ class AnthropicSettingsConfigurable : Configurable {
         settings.refreshIntervalMinutes = c.refreshInterval
         settings.showNotifications = c.showNotifications
         settings.notifyAtPercentage = c.notifyAtPercentage
+        settings.resetTimeDisplayMode = c.resetTimeDisplayMode
 
         // Handle Usage Bar toggle change.
         val usageBarToggleChanged = oldEnableUsageBar != c.enableUsageBar
@@ -105,6 +107,7 @@ class AnthropicSettingsConfigurable : Configurable {
         c.refreshInterval = settings.refreshIntervalMinutes
         c.showNotifications = settings.showNotifications
         c.notifyAtPercentage = settings.notifyAtPercentage
+        c.resetTimeDisplayMode = settings.resetTimeDisplayMode
     }
 
     override fun disposeUIResources() {
