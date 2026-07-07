@@ -27,9 +27,8 @@ dependencies {
         // Required for plugin development
         instrumentationTools()
 
-        // Disable for now to simplify build
         // pluginVerifier()
-        // testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
 
     // HTTP Client for API calls
@@ -43,9 +42,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.8.0")
 
-    // Testing - disabled for now to simplify build
-    // testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
-    // testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
+    // Testing
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
 }
 
 kotlin {
@@ -85,12 +84,9 @@ intellijPlatform {
 }
 
 tasks {
-    // Disable tests for now - re-enable when adding test dependencies
-    /*
     test {
         useJUnitPlatform()
     }
-    */
 
     buildSearchableOptions {
         enabled = false

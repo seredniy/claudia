@@ -30,6 +30,7 @@ class AnthropicSettingsComponent {
     private val accessTokenField = JBPasswordField()
     private val autoDiscoveryStatusLabel = JBLabel()
     private val checkCredentialsButton = JButton("Check Credentials")
+    private val timeBasedColoringCheckbox = JBCheckBox("Time-based coloring")
 
     // Common fields.
     private val refreshIntervalField = JBTextField()
@@ -76,7 +77,7 @@ class AnthropicSettingsComponent {
         usageBarSettingsControls.addAll(listOf(
             useManualTokenCheckbox, accessTokenField, autoDiscoveryStatusLabel,
             checkCredentialsButton, refreshIntervalField, showNotificationsCheckbox,
-            notifyAtPercentageField, testConnectionButton
+            notifyAtPercentageField, testConnectionButton, timeBasedColoringCheckbox
         ))
 
         // Build the form.
@@ -106,6 +107,8 @@ class AnthropicSettingsComponent {
             .addVerticalGap(10)
             .addComponent(showNotificationsCheckbox)
             .addLabeledComponent("Notify at percentage:", notifyAtPercentageField, 1, false)
+            .addVerticalGap(5)
+            .addComponent(timeBasedColoringCheckbox)
             .addVerticalGap(15)
             .addComponent(createTestConnectionPanel())
             .addVerticalGap(15)
@@ -248,6 +251,12 @@ class AnthropicSettingsComponent {
         get() = notifyAtPercentageField.text.toIntOrNull() ?: 90
         set(value) {
             notifyAtPercentageField.text = value.toString()
+        }
+
+    var timeBasedColoring: Boolean
+        get() = timeBasedColoringCheckbox.isSelected
+        set(value) {
+            timeBasedColoringCheckbox.isSelected = value
         }
 
     private fun testConnection() {

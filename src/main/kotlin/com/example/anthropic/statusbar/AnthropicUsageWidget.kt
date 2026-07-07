@@ -20,6 +20,7 @@ import com.intellij.util.ui.UIUtil
 import java.awt.*
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import javax.swing.PopupFactory
 import javax.swing.*
 
 class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget, StatusBarWidget.Multiframe {
@@ -27,6 +28,7 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
     private val usageService = service<AnthropicUsageService>()
     private val settings = service<AnthropicSettingsState>()
     private var currentData: UsageData? = null
+    private var tooltipPopup: javax.swing.Popup? = null
 
     init {
         setupUI()
@@ -48,28 +50,47 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
     }
 
     private fun setupUI() {
-        panel.toolTipText = "Claude Usage - Click for details"
-
         panel.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
+                hideTooltipPopup()
                 if (SwingUtilities.isLeftMouseButton(e)) {
-                    // Left click - open settings.
                     ShowSettingsUtil.getInstance()
                         .showSettingsDialog(project, AnthropicSettingsConfigurable::class.java)
                 } else if (SwingUtilities.isRightMouseButton(e)) {
-                    // Right click - show context menu.
                     showContextMenu(e)
                 }
             }
 
             override fun mouseEntered(e: MouseEvent?) {
                 panel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+                showTooltipPopup()
             }
 
             override fun mouseExited(e: MouseEvent?) {
                 panel.cursor = Cursor.getDefaultCursor()
+                hideTooltipPopup()
             }
         })
+    }
+
+    private fun showTooltipPopup() {
+        hideTooltipPopup()
+        val data = currentData ?: return
+        try {
+            val content = UsageTooltipContent(data)
+            val loc = panel.locationOnScreen
+            val popupX = loc.x
+            val popupY = loc.y - content.preferredSize.height - 4
+            tooltipPopup = PopupFactory.getSharedInstance().getPopup(panel, content, popupX, popupY)
+            tooltipPopup?.show()
+        } catch (e: Exception) {
+            // Panel may not be showing yet — ignore.
+        }
+    }
+
+    private fun hideTooltipPopup() {
+        tooltipPopup?.hide()
+        tooltipPopup = null
     }
 
     private fun showContextMenu(e: MouseEvent) {
@@ -156,15 +177,16 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
             "$label: $percentage%"
         }
 
-        // Color based on usage percentage.
-        val color = when {
-            percentage >= 90 -> JBColor(Color(200, 50, 50), Color(180, 40, 40))      // Red.
-            percentage >= 75 -> JBColor(Color(255, 165, 0), Color(200, 130, 0))      // Orange.
-            else -> JBColor(Color(50, 150, 50), Color(80, 170, 80))                  // Green.
-        }
+        // Calculate time progress for the line.
+        val isFiveHour = settings.displayMode == AnthropicSettingsState.UsageDisplayMode.FIVE_HOUR
+        val timeProgress = data.calculateTimeProgress(java.time.Instant.now(), isFiveHour)
 
-        panel.updateUsage(percentage, text, color)
-        panel.toolTipText = buildTooltip(data)
+        // Color based on usage percentage and time progress.
+        // Use raw utilization for precise color threshold evaluation.
+        val utilization = if (isFiveHour) data.fiveHourUtilization else data.sevenDayUtilization
+        val color = UsageColorLogic.getColor(utilization, timeProgress, settings.timeBasedColoring)
+
+        panel.updateUsage(percentage, text, color, timeProgress)
         panel.isVisible = true
     }
 
@@ -172,73 +194,6 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
         panel.updateUsage(0, "Error", JBColor.RED)
         panel.toolTipText = "Failed to fetch usage data: $error\nClick to open settings"
         panel.isVisible = true
-    }
-
-    private fun buildTooltip(data: UsageData): String {
-        val isDark = UIUtil.isUnderDarcula()
-        val barBg = if (isDark) "#555555" else "#cccccc"
-
-        fun barColor(pct: Double): String = when {
-            pct >= 90 -> if (isDark) "#b42828" else "#c83232"
-            pct >= 75 -> if (isDark) "#c88200" else "#ffa500"
-            else -> if (isDark) "#50aa50" else "#329632"
-        }
-
-        fun progressBar(pct: Double, suffix: String? = null): String {
-            val clamped = pct.coerceIn(0.0, 100.0)
-            val filled = clamped.toInt()
-            val remaining = 100 - filled
-            val color = barColor(clamped)
-            val pctLabel = String.format("%.1f%%", clamped) + (suffix?.let { " &middot; $it" } ?: "")
-            val filledTextColor = if (isDark) "#eeeeee" else "#ffffff"
-            val bgTextColor = if (isDark) "#dddddd" else "#333333"
-            val cells = if (filled >= 50) {
-                """<td width="$filled%" bgcolor="$color" height="16" align="center"><font size="2" color="$filledTextColor">$pctLabel</font></td>
-                   <td width="$remaining%" bgcolor="$barBg" height="16"></td>"""
-            } else {
-                """<td width="$filled%" bgcolor="$color" height="16"></td>
-                   <td width="$remaining%" bgcolor="$barBg" height="16" align="center"><font size="2" color="$bgTextColor">$pctLabel</font></td>"""
-            }
-            return """<table width="250" cellpadding="0" cellspacing="0" style="margin:2px 0">
-                <tr>$cells</tr>
-            </table>"""
-        }
-
-        val sevenDayResetInfo = data.formattedSevenDayResetsAt?.let { "Resets $it" } ?: ""
-
-        val breakdownHtml = if (data.breakdown.isNotEmpty()) {
-            "<br/><br/>" + data.breakdown.entries.joinToString("") { (model, usage) ->
-                """<b>$model</b>
-                ${progressBar(usage.utilization)}"""
-            }
-        } else {
-            ""
-        }
-
-        val minutesAgo = java.time.Duration.between(data.lastUpdated, java.time.Instant.now()).toMinutes()
-        val updatedText = when {
-            minutesAgo > 60 -> "Data may be stale"
-            minutesAgo < 2 -> "Updated just now"
-            else -> "Updated ${minutesAgo}m ago"
-        }
-
-        return """
-            <html>
-            <body>
-            <b>Claude Usage</b>
-            <br/><br/>
-            <b>5-Hour Limit</b>
-            ${progressBar(data.fiveHourUtilization, data.fiveHourTimeRemaining)}
-            <br/>
-            <b>7-Day Limit</b>
-            ${progressBar(data.sevenDayUtilization)}
-            ${if (sevenDayResetInfo.isNotEmpty()) "<span style='font-size:small'>$sevenDayResetInfo</span>" else ""}
-            $breakdownHtml
-            <br/>
-            <span style='font-size:small; color:gray'>$updatedText</span>
-            </body>
-            </html>
-        """.trimIndent()
     }
 
     override fun install(statusBar: StatusBar) {
@@ -250,10 +205,80 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
     }
 
     /**
+     * Shared bar painting logic used by both the status bar widget and the tooltip.
+     * Draws: background, filled progress, border, time-progress line, centered text.
+     */
+    private fun paintBar(
+        g2: Graphics2D,
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        percentage: Int,
+        timeProgress: Double,
+        text: String,
+        barColor: Color,
+        isDark: Boolean
+    ) {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+
+        // Draw background.
+        g2.color = if (isDark) Gray._85 else Gray._200
+        g2.fillRoundRect(x, y, width, height, 3, 3)
+
+        // Draw filled progress.
+        if (percentage > 0) {
+            val filledWidth = (width * percentage / 100).coerceAtLeast(0)
+            g2.color = barColor
+            g2.fillRoundRect(x, y, filledWidth, height, 3, 3)
+        }
+
+        // Draw border.
+        g2.color = if (isDark) Gray._70 else Gray._180
+        g2.drawRoundRect(x, y, width - 1, height - 1, 3, 3)
+
+        // Draw time progress line (purple).
+        if (settings.timeBasedColoring && timeProgress > 0) {
+            val lineX = x + (width * timeProgress / 100).toInt().coerceIn(0, width - 1)
+            g2.color = if (isDark) Color(180, 80, 255) else Color(128, 0, 128)
+            g2.stroke = BasicStroke(1.5f)
+            g2.drawLine(lineX, y, lineX, y + height - 1)
+        }
+
+        // Draw text centered over the full bar width.
+        g2.color = if (isDark) Gray._220 else Gray._50
+        g2.font = JBUI.Fonts.toolbarSmallComboBoxFont()
+
+        val fontMetrics = g2.fontMetrics
+        val textWidth = fontMetrics.stringWidth(text)
+        val textHeight = fontMetrics.ascent
+        val textX = x + (width - textWidth) / 2
+        val textY = y + (height + textHeight) / 2 - 1
+
+        g2.drawString(text, textX, textY)
+    }
+
+    /**
+     * Computes the bar color based on usage percentage and time progress.
+     */
+    private fun barColor(pct: Double, timeProgress: Double, isDark: Boolean): Color {
+        if (settings.timeBasedColoring) {
+            return UsageColorLogic.getColor(pct, timeProgress, true)
+        }
+        return when {
+            pct >= 90 -> if (isDark) Color(180, 40, 40) else Color(200, 50, 50)
+            pct >= 75 -> if (isDark) Color(200, 130, 0) else Color(255, 165, 0)
+            else -> if (isDark) Color(80, 170, 80) else Color(50, 150, 50)
+        }
+    }
+
+    /**
      * Custom panel with progress bar painting (like Memory Indicator).
      */
-    private class CustomProgressPanel : JPanel() {
+    private inner class CustomProgressPanel : JPanel() {
         private var percentage: Int = 0
+        private var timeProgress: Double = 0.0
         private var text: String = "Loading..."
         private var barColor: Color = JBColor.GREEN
 
@@ -263,10 +288,11 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
             isOpaque = false
         }
 
-        fun updateUsage(percentage: Int, text: String, color: Color) {
+        fun updateUsage(percentage: Int, text: String, color: Color, timeProgress: Double = 0.0) {
             this.percentage = percentage
             this.text = text
             this.barColor = color
+            this.timeProgress = timeProgress
             repaint()
         }
 
@@ -274,43 +300,177 @@ class AnthropicUsageWidget(private val project: Project) : CustomStatusBarWidget
             super.paintComponent(g)
 
             val g2 = g.create() as Graphics2D
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-
             val insets = insets
             val width = getWidth() - insets.left - insets.right
             val height = getHeight() - insets.top - insets.bottom
-            val x = insets.left
-            val y = insets.top
 
-            // Draw background.
-            g2.color = if (UIUtil.isUnderDarcula()) Gray._85 else Gray._200
-            g2.fillRoundRect(x, y, width, height, 3, 3)
+            paintBar(g2, 0, 0, width, height, percentage, timeProgress, text, barColor, UIUtil.isUnderDarcula())
 
-            // Draw filled progress.
-            if (percentage > 0) {
-                val filledWidth = (width * percentage / 100).coerceAtLeast(0)
-                g2.color = barColor
-                g2.fillRoundRect(x, y, filledWidth, height, 3, 3)
+            g2.dispose()
+        }
+    }
+
+    /**
+     * Custom JPanel that renders usage tooltip content using Java2D.
+     * Embedded inside a standard JToolTip for correct sizing.
+     */
+    private inner class UsageTooltipContent(private val data: UsageData) : JPanel() {
+        private val BAR_WIDTH = 250
+        private val BAR_HEIGHT = 16
+        private val PAD = 10
+        private val LINE_GAP = 4
+        private val SECTION_GAP = 8
+
+        init {
+            isOpaque = true
+            preferredSize = calculateSize()
+        }
+
+        private fun calculateSize(): Dimension {
+            val g2 = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .defaultScreenDevice.defaultConfiguration
+                .createCompatibleImage(1, 1).createGraphics()
+
+            val titleFont = JBUI.Fonts.label().deriveFont(Font.BOLD)
+            val labelFont = JBUI.Fonts.label().deriveFont(Font.BOLD)
+            val smallFont = JBUI.Fonts.smallFont()
+
+            g2.font = titleFont
+            val titleH = g2.fontMetrics.height
+            g2.font = labelFont
+            val labelH = g2.fontMetrics.height
+            g2.font = smallFont
+            val smallH = g2.fontMetrics.height
+            g2.dispose()
+
+            var h = PAD + titleH + SECTION_GAP
+            // 5-hour
+            h += labelH + LINE_GAP + BAR_HEIGHT + SECTION_GAP
+            // 7-day
+            h += labelH + LINE_GAP + BAR_HEIGHT + LINE_GAP
+            // reset info
+            if (data.formattedSevenDayResetsAt != null) {
+                h += smallH + LINE_GAP
+            }
+            // breakdown
+            if (data.breakdown.isNotEmpty()) {
+                h += SECTION_GAP
+                for (entry in data.breakdown) {
+                    h += labelH + LINE_GAP + BAR_HEIGHT + LINE_GAP
+                }
+            }
+            // updated
+            h += SECTION_GAP + smallH + PAD
+
+            return Dimension(BAR_WIDTH + PAD * 2, h)
+        }
+
+        override fun paintComponent(g: Graphics) {
+            super.paintComponent(g)
+            val g2 = g.create() as Graphics2D
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+
+            val isDark = UIUtil.isUnderDarcula()
+            val w = width
+            val h = height
+
+            // Background.
+            val bg = if (isDark) Color(60, 63, 65) else Color(245, 245, 245)
+            g2.color = bg
+            g2.fillRoundRect(0, 0, w, h, 6, 6)
+
+            // Border.
+            g2.color = if (isDark) Color(80, 83, 85) else Color(200, 200, 200)
+            g2.drawRoundRect(0, 0, w - 1, h - 1, 6, 6)
+
+            val textColor = if (isDark) Gray._220 else Gray._50
+            val dimColor = if (isDark) Gray._140 else Gray._120
+
+            val titleFont = JBUI.Fonts.label().deriveFont(Font.BOLD)
+            val labelFont = JBUI.Fonts.label().deriveFont(Font.BOLD)
+            val smallFont = JBUI.Fonts.smallFont()
+
+            var curY = PAD
+            val leftX = PAD
+
+            val now = java.time.Instant.now()
+            val fiveHourTP = data.calculateTimeProgress(now, isFiveHour = true)
+            val sevenDayTP = data.calculateTimeProgress(now, isFiveHour = false)
+
+            // ── Title ──
+            g2.color = textColor
+            g2.font = titleFont
+            g2.drawString("Claude Usage", leftX, curY + g2.fontMetrics.ascent)
+            curY += g2.fontMetrics.height + SECTION_GAP
+
+            // ── 5-Hour Limit ──
+            g2.color = textColor
+            g2.font = labelFont
+            g2.drawString("5-Hour Limit", leftX, curY + g2.fontMetrics.ascent)
+            curY += g2.fontMetrics.height + LINE_GAP
+
+            val fivePct = data.fiveHourUtilization.coerceIn(0.0, 100.0)
+            val fiveLabel = String.format("%.1f%%", fivePct) +
+                    (data.fiveHourTimeRemaining?.let { " · $it" } ?: "")
+            val fiveColor = barColor(fivePct, fiveHourTP, isDark)
+            paintBar(g2, leftX, curY, BAR_WIDTH, BAR_HEIGHT,
+                fivePct.toInt(), fiveHourTP, fiveLabel, fiveColor, isDark)
+            curY += BAR_HEIGHT + SECTION_GAP
+
+            // ── 7-Day Limit ──
+            g2.color = textColor
+            g2.font = labelFont
+            g2.drawString("7-Day Limit", leftX, curY + g2.fontMetrics.ascent)
+            curY += g2.fontMetrics.height + LINE_GAP
+
+            val sevenPct = data.sevenDayUtilization.coerceIn(0.0, 100.0)
+            val sevenLabel = String.format("%.1f%%", sevenPct)
+            val sevenColor = barColor(sevenPct, sevenDayTP, isDark)
+            paintBar(g2, leftX, curY, BAR_WIDTH, BAR_HEIGHT,
+                sevenPct.toInt(), sevenDayTP, sevenLabel, sevenColor, isDark)
+            curY += BAR_HEIGHT + LINE_GAP
+
+            // Reset info.
+            data.formattedSevenDayResetsAt?.let { resetText ->
+                g2.color = dimColor
+                g2.font = smallFont
+                g2.drawString("Resets $resetText", leftX, curY + g2.fontMetrics.ascent)
+                curY += g2.fontMetrics.height + LINE_GAP
             }
 
-            // Draw border.
-            g2.color = if (UIUtil.isUnderDarcula()) Gray._70 else Gray._180
-            g2.drawRoundRect(x, y, width - 1, height - 1, 3, 3)
+            // ── Breakdown ──
+            if (data.breakdown.isNotEmpty()) {
+                curY += SECTION_GAP
+                for ((model, usage) in data.breakdown) {
+                    g2.color = textColor
+                    g2.font = labelFont
+                    g2.drawString(model, leftX, curY + g2.fontMetrics.ascent)
+                    curY += g2.fontMetrics.height + LINE_GAP
 
-            // Draw text centered.
-            g2.color = if (UIUtil.isUnderDarcula()) Gray._220 else Gray._50
-            g2.font = JBUI.Fonts.toolbarSmallComboBoxFont()
+                    val mPct = usage.utilization.coerceIn(0.0, 100.0)
+                    val mLabel = String.format("%.1f%%", mPct)
+                    val mColor = barColor(mPct, 0.0, isDark)
+                    paintBar(g2, leftX, curY, BAR_WIDTH, BAR_HEIGHT,
+                        mPct.toInt(), 0.0, mLabel, mColor, isDark)
+                    curY += BAR_HEIGHT + LINE_GAP
+                }
+            }
 
-            val fontMetrics = g2.fontMetrics
-            val textWidth = fontMetrics.stringWidth(text)
-            val textHeight = fontMetrics.ascent
-            val textX = x + (width - textWidth) / 2
-            val textY = y + (height + textHeight) / 2 - 1
-
-            g2.drawString(text, textX, textY)
+            // ── Updated ──
+            curY += SECTION_GAP
+            val minutesAgo = java.time.Duration.between(data.lastUpdated, java.time.Instant.now()).toMinutes()
+            val updatedText = when {
+                minutesAgo > 60 -> "Data may be stale"
+                minutesAgo < 2 -> "Updated just now"
+                else -> "Updated ${minutesAgo}m ago"
+            }
+            g2.color = dimColor
+            g2.font = smallFont
+            g2.drawString(updatedText, leftX, curY + g2.fontMetrics.ascent)
 
             g2.dispose()
         }
     }
 }
+
