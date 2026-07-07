@@ -58,6 +58,25 @@ data class UsageData(
                 }
             }
         }
+    
+    /**
+     * Calculates time progress as a percentage (0-100)
+     */
+    fun calculateTimeProgress(now: Instant, isFiveHour: Boolean): Double {
+        val resetsAt = if (isFiveHour) fiveHourResetsAt else sevenDayResetsAt
+        if (resetsAt == null) return 0.0
+        
+        val duration = if (isFiveHour) java.time.Duration.ofHours(5) else java.time.Duration.ofDays(7)
+        val lastReset = resetsAt.minus(duration)
+        
+        if (now.isBefore(lastReset)) return 0.0
+        if (now.isAfter(resetsAt)) return 100.0
+        
+        val passed = java.time.Duration.between(lastReset, now).toMillis().toDouble()
+        val total = duration.toMillis().toDouble()
+        
+        return (passed / total * 100.0).coerceIn(0.0, 100.0)
+    }
 }
 
 data class ModelUsage(

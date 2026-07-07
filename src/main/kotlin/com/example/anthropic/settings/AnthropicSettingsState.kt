@@ -25,7 +25,8 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         var showNotifications: Boolean = true,
         var notifyAtPercentage: Int = 90,
         var useManualToken: Boolean = false,  // false = auto-discovery, true = manual token
-        var displayMode: UsageDisplayMode = UsageDisplayMode.FIVE_HOUR  // Which limit to show in status bar
+        var displayMode: UsageDisplayMode = UsageDisplayMode.FIVE_HOUR, // Which limit to show in status bar
+        var timeBasedColoring: Boolean = false
     )
 
     /**
@@ -90,6 +91,12 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         get() = myState.displayMode
         set(value) {
             myState.displayMode = value
+        }
+
+    var timeBasedColoring: Boolean
+        get() = myState.timeBasedColoring
+        set(value) {
+            myState.timeBasedColoring = value
         }
 
     // Secure OAuth access token storage (for manual mode).
